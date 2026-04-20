@@ -3,7 +3,6 @@ pub fn upsert_project_sql() -> &'static str {
 INSERT INTO projects (id, path, display_name)
 VALUES (?1, ?2, ?3)
 ON CONFLICT(path) DO UPDATE SET
-  id = excluded.id,
   display_name = excluded.display_name
 "#
 }
@@ -61,8 +60,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn upsert_project_sql_updates_id_when_path_conflicts() {
+    fn upsert_project_sql_keeps_primary_key_stable_on_path_conflict() {
         let sql = upsert_project_sql();
-        assert!(sql.contains("id = excluded.id"));
+        assert!(!sql.contains("id = excluded.id"));
+        assert!(sql.contains("display_name = excluded.display_name"));
     }
 }

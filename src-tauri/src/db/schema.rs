@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   external_id   TEXT NOT NULL,
   title         TEXT NOT NULL,
   started_at    TEXT NOT NULL,
-  ended_at      TEXT,
+  ended_at      TEXT NOT NULL,
   updated_at    TEXT NOT NULL,
   message_count INTEGER NOT NULL DEFAULT 0,
   summary_hint  TEXT,
@@ -74,5 +74,11 @@ mod tests {
         let sql = schema_sql();
         assert!(sql.contains("FOREIGN KEY(project_id)"));
         assert!(sql.contains("FOREIGN KEY(session_id)"));
+    }
+
+    #[test]
+    fn schema_sql_requires_ended_at_for_current_model_shape() {
+        let sql = schema_sql();
+        assert!(sql.contains("ended_at      TEXT NOT NULL"));
     }
 }

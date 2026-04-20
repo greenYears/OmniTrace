@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 
 use tmpomnitrace_bootstrapmpul84appomnitrace_lib::db;
 use tmpomnitrace_bootstrapmpul84appomnitrace_lib::ingest::scanner::scan_fixture_sources;
@@ -29,5 +29,21 @@ fn scan_and_upsert_fixture_sessions_end_to_end() {
         .query_row("SELECT COUNT(*) FROM sessions;", [], |row| row.get(0))
         .expect("count query should succeed");
     assert_eq!(count, 2);
-}
 
+    let message_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM messages;", [], |row| row.get(0))
+        .expect("message count query should succeed");
+    assert_eq!(message_count, 8);
+
+    let project_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM projects;", [], |row| row.get(0))
+        .expect("project count query should succeed");
+    assert_eq!(project_count, 2);
+
+    let fk_check: String = conn
+        .query_row("PRAGMA foreign_key_check;", [], |_row| Ok(String::from("violated")))
+        .optional()
+        .expect("foreign key check should succeed")
+        .unwrap_or_else(|| String::from("ok"));
+    assert_eq!(fk_check, "ok");
+}

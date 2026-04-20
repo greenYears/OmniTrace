@@ -41,32 +41,33 @@ fn find_existing_session_id(
 }
 
 pub fn upsert_sessions(conn: &Connection, sessions: &[NormalizedSession]) -> Result<()> {
-    conn.execute_batch("BEGIN;")
+    let tx = conn
+        .unchecked_transaction()
         .with_context(|| "begin sqlite transaction")?;
 
-    let r: Result<()> = (|| {
+    {
         for s in sessions {
             let project_id = project_id_for_path(&s.project.path);
-            conn.execute(
+            tx.execute(
                 upsert_project_sql(),
                 params![&project_id, &s.project.path, &s.project.display_name],
             )
             .with_context(|| "upsert project")?;
 
-            let existing_id = find_existing_session_id(conn, &s.source_id, &s.external_id)?;
+            let existing_id = find_existing_session_id(&tx, &s.source_id, &s.external_id)?;
             let session_id = existing_id.unwrap_or_else(|| {
                 default_session_id(s.source_id.as_str(), s.external_id.as_str())
             });
 
             // Allow re-runs: ensure we don't keep stale messages if message count shrinks.
-            conn.execute(
+            tx.execute(
                 "DELETE FROM messages WHERE session_id = ?1",
                 params![&session_id],
             )
             .with_context(|| "delete old messages for session")?;
 
             let message_count = s.messages.len() as i64;
-            conn.execute(
+            tx.execute(
                 upsert_session_sql(),
                 params![
                     &session_id,
@@ -86,7 +87,7 @@ pub fn upsert_sessions(conn: &Connection, sessions: &[NormalizedSession]) -> Res
 
             for msg in &s.messages {
                 let msg_id = message_id_for(&session_id, msg.seq_no);
-                conn.execute(
+                tx.execute(
                     insert_message_sql(),
                     params![
                         &msg_id,
@@ -101,20 +102,8 @@ pub fn upsert_sessions(conn: &Connection, sessions: &[NormalizedSession]) -> Res
                 .with_context(|| "insert message")?;
             }
         }
-        Ok(())
-    })();
-
-    match r {
-        Ok(()) => {
-            conn.execute_batch("COMMIT;")
-                .with_context(|| "commit sqlite transaction")?;
-            Ok(())
-        }
-        Err(e) => {
-            // Best-effort rollback; keep the original error as primary.
-            let _ = conn.execute_batch("ROLLBACK;");
-            Err(e)
-        }
     }
-}
 
+    tx.commit().with_context(|| "commit sqlite transaction")?;
+    Ok(())
+}
