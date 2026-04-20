@@ -1,0 +1,4 @@
+{"session_id":"01900000-0000-7000-8000-000000000000","ts":1776662000,"text":"Fetch and follow instructions from https://example.com/INSTALL.md"}
+{"session_id":"01900000-0000-7000-8000-000000000000","ts":1776662061,"text":"请解释这个签名算法的输入输出，并指出最容易踩坑的编码点。"}
+{"session_id":"01900000-0000-7000-8000-000000000000","ts":1776662122,"text":"我需要把 Map<String, Object> 替换成 Map<String, String> 来适配 helper 方法。"}
+{"session_id":"01900000-0000-7000-8000-000000000000","ts":1776662183,"text":"OK"}

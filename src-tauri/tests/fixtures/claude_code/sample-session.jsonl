@@ -1,0 +1,4 @@
+{"display":"/help","pastedContents":{},"timestamp":1776651200000,"project":"/Users/REDACTED/workspace/acme/monorepo","sessionId":"11111111-2222-3333-4444-555555555555"}
+{"display":"请基于现有代码实现一个最小可行的 history adapter，并给出测试点。","pastedContents":{},"timestamp":1776651202500,"project":"/Users/REDACTED/workspace/acme/monorepo","sessionId":"11111111-2222-3333-4444-555555555555"}
+{"display":"@src-tauri/src/main.rs#L1-L40 这里的日志初始化是否会影响 trace 采集？","pastedContents":{},"timestamp":1776651208000,"project":"/Users/REDACTED/workspace/acme/monorepo","sessionId":"11111111-2222-3333-4444-555555555555"}
+{"display":"/exit","pastedContents":{},"timestamp":1776651213000,"project":"/Users/REDACTED/workspace/acme/monorepo","sessionId":"11111111-2222-3333-4444-555555555555"}
