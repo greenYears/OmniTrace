@@ -6,6 +6,7 @@ describe("App", () => {
     render(<App />);
 
     expect(screen.getByRole("heading", { name: "OmniTrace" })).toBeInTheDocument();
+    expect(screen.getByText(/Unified local history viewer/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Scan / Refresh" })).toBeInTheDocument();
   });
 });

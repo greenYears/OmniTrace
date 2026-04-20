@@ -4,8 +4,15 @@ function App() {
   return (
     <main className="app-shell">
       <header className="app-header">
-        <h1>Welcome to Tauri + React</h1>
-        <p className="app-subtitle">Starter shell before OmniTrace bootstrap.</p>
+        <div>
+          <h1>OmniTrace</h1>
+          <p className="app-subtitle">
+            Unified local history viewer for AI coding TUIs.
+          </p>
+        </div>
+        <button className="scan-button" type="button">
+          Scan / Refresh
+        </button>
       </header>
     </main>
   );
