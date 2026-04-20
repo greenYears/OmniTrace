@@ -1,58 +1,48 @@
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProjectRecord {
-    pub id: String,
     pub path: String,
-    pub display_name: Option<String>,
+    pub display_name: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MessageRecord {
-    pub id: String,
-    pub session_id: String,
     pub role: String,
     pub content_text: String,
-    pub created_at: DateTime<Utc>,
+    pub created_at: String,
     pub seq_no: i64,
-    pub metadata_json: Option<String>,
+    pub metadata_json: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NormalizedSession {
-    pub id: String,
     pub source_id: String,
-    pub project_id: Option<String>,
     pub external_id: String,
     pub title: String,
-    pub started_at: DateTime<Utc>,
-    pub ended_at: Option<DateTime<Utc>>,
-    pub updated_at: DateTime<Utc>,
-    pub message_count: i64,
-    pub summary_hint: Option<String>,
-    pub raw_ref: Option<String>,
+    pub started_at: String,
+    pub ended_at: String,
+    pub updated_at: String,
+    pub project: ProjectRecord,
+    pub messages: Vec<MessageRecord>,
+    pub raw_ref: String,
 }
 
 impl NormalizedSession {
     pub fn untitled(source_id: &str, started_at_rfc3339: &str) -> Self {
-        // Title is deterministic and should not depend on other fields.
-        let title = format!("{source_id} @ {started_at_rfc3339}");
-        let started_at = DateTime::parse_from_rfc3339(started_at_rfc3339)
-            .expect("started_at_rfc3339 must be RFC3339")
-            .with_timezone(&Utc);
         Self {
-            id: String::new(),
             source_id: source_id.to_string(),
-            project_id: None,
-            external_id: String::new(),
-            title,
-            started_at,
-            ended_at: None,
-            updated_at: started_at,
-            message_count: 0,
-            summary_hint: None,
-            raw_ref: None,
+            external_id: format!("untitled:{source_id}:{started_at_rfc3339}"),
+            title: format!("{source_id} @ {started_at_rfc3339}"),
+            started_at: started_at_rfc3339.to_string(),
+            ended_at: started_at_rfc3339.to_string(),
+            updated_at: started_at_rfc3339.to_string(),
+            project: ProjectRecord {
+                path: "Unknown Project".to_string(),
+                display_name: "Unknown Project".to_string(),
+            },
+            messages: Vec::new(),
+            raw_ref: String::new(),
         }
     }
 }
@@ -65,5 +55,12 @@ mod tests {
     fn normalized_session_untitled_formats_title() {
         let s = NormalizedSession::untitled("claude_code", "2026-04-19T10:00:00Z");
         assert_eq!(s.title, "claude_code @ 2026-04-19T10:00:00Z");
+    }
+
+    #[test]
+    fn normalized_session_untitled_keeps_raw_started_at_without_parsing() {
+        let s = NormalizedSession::untitled("claude_code", "not-rfc3339");
+        assert_eq!(s.started_at, "not-rfc3339");
+        assert_eq!(s.external_id, "untitled:claude_code:not-rfc3339");
     }
 }
