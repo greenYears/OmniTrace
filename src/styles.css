@@ -55,6 +55,12 @@ body {
   font-size: 0.875rem;
 }
 
+.app-status {
+  margin: 6px 0 0;
+  color: #78716c;
+  font-size: 0.75rem;
+}
+
 .scan-button {
   border: 0;
   border-radius: 6px;
@@ -102,6 +108,47 @@ body {
   font-size: 0.875rem;
 }
 
+.sidebar-filters {
+  padding: 16px;
+}
+
+.sidebar-filters-title {
+  margin: 0 0 12px;
+  color: #78716c;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.sidebar-filter-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sidebar-filter-button {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: transparent;
+  color: #a8a29e;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sidebar-filter-button:hover {
+  background: #1c1917;
+  color: #fafaf9;
+}
+
+.sidebar-filter-button.is-selected {
+  border-color: #44403c;
+  background: #1c1917;
+  color: #fafaf9;
+}
+
 .session-list {
   display: flex;
   flex-direction: column;
@@ -143,6 +190,15 @@ body {
 
 .session-detail {
   padding: 16px;
+}
+
+.viewer-empty-state {
+  grid-column: 2 / 4;
+  display: grid;
+  place-items: center;
+  padding: 32px 20px;
+  color: #a8a29e;
+  text-align: center;
 }
 
 .session-detail-empty {
