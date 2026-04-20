@@ -4,6 +4,12 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
+pub mod adapters;
+pub mod commands;
+pub mod db;
+pub mod domain;
+pub mod ingest;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
