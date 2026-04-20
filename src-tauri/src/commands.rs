@@ -1,10 +1,8 @@
-use std::path::PathBuf;
-
 use rusqlite::{Connection, OptionalExtension};
 use serde::Serialize;
 
 use crate::db;
-use crate::ingest::scanner::scan_fixture_sources;
+use crate::ingest::scanner::scan_home_sources;
 use crate::ingest::upsert::{initialize_database, upsert_sessions};
 
 #[derive(Debug, Clone, Serialize)]
@@ -39,17 +37,18 @@ pub struct SessionDetailDto {
     pub messages: Vec<SessionMessageDto>,
 }
 
-fn fixture_root(tool: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests")
-        .join("fixtures")
-        .join(tool)
+fn resolve_home_root() -> Result<std::path::PathBuf, String> {
+    if let Some(path) = std::env::var_os("OMNITRACE_HOME_DIR") {
+        return Ok(path.into());
+    }
+
+    std::env::var_os("HOME")
+        .map(Into::into)
+        .ok_or_else(|| "HOME is not set".to_string())
 }
 
-fn open_fixture_database() -> Result<Connection, String> {
-    let result =
-        scan_fixture_sources(fixture_root("claude_code"), fixture_root("codex"))
-            .map_err(|e| e.to_string())?;
+fn open_history_database() -> Result<Connection, String> {
+    let result = scan_home_sources(resolve_home_root()?).map_err(|e| e.to_string())?;
 
     let conn = Connection::open_in_memory().map_err(|e| e.to_string())?;
     db::configure_connection(&conn).map_err(|e| e.to_string())?;
@@ -168,12 +167,12 @@ ORDER BY seq_no ASC
 
 #[tauri::command]
 pub fn scan_sources() -> Result<Vec<SessionListItem>, String> {
-    let conn = open_fixture_database()?;
+    let conn = open_history_database()?;
     list_session_items(&conn)
 }
 
 #[tauri::command]
 pub fn get_session_detail(id: String) -> Result<Option<SessionDetailDto>, String> {
-    let conn = open_fixture_database()?;
+    let conn = open_history_database()?;
     load_session_detail(&conn, &id)
 }
