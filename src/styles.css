@@ -29,6 +29,8 @@ body {
   min-height: 100vh;
   background: #0c0a09;
   color: #fafaf9;
+  display: flex;
+  flex-direction: column;
 }
 
 .app-header {
@@ -69,5 +71,146 @@ body {
   .app-header {
     align-items: flex-start;
     flex-direction: column;
+  }
+}
+
+.viewer-shell {
+  flex: 1;
+  min-height: 0;
+}
+
+.three-pane-shell {
+  height: 100%;
+  display: grid;
+  grid-template-columns: 240px 320px 1fr;
+}
+
+.three-pane {
+  min-height: 0;
+  overflow: auto;
+}
+
+.three-pane-left,
+.three-pane-middle {
+  border-right: 1px solid #292524;
+}
+
+.three-pane-placeholder {
+  margin: 0;
+  padding: 16px;
+  color: #a8a29e;
+  font-size: 0.875rem;
+}
+
+.session-list {
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  gap: 8px;
+}
+
+.session-list-item {
+  border: 1px solid #292524;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.session-list-item:hover {
+  border-color: #44403c;
+  background: #1c1917;
+}
+
+.session-list-item.is-selected {
+  border-color: #a8a29e;
+  background: #1c1917;
+}
+
+.session-list-item-title {
+  display: block;
+  font-weight: 600;
+}
+
+.session-list-item-meta {
+  display: block;
+  margin-top: 4px;
+  color: #a8a29e;
+  font-size: 0.8125rem;
+}
+
+.session-detail {
+  padding: 16px;
+}
+
+.session-detail-empty {
+  color: #a8a29e;
+}
+
+.session-detail-header {
+  border-bottom: 1px solid #292524;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+}
+
+.session-detail-title {
+  margin: 0;
+  font-size: 1.25rem;
+  line-height: 1.2;
+}
+
+.session-detail-path {
+  margin: 8px 0 0;
+  color: #a8a29e;
+  font-size: 0.875rem;
+  word-break: break-word;
+}
+
+.session-message-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.session-message {
+  border: 1px solid #292524;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #0f0d0c;
+}
+
+.session-message-role {
+  color: #a8a29e;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.session-message-content {
+  margin-top: 6px;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 960px) {
+  .three-pane-shell {
+    grid-template-columns: 200px 280px 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .three-pane-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .three-pane-left,
+  .three-pane-middle {
+    border-right: 0;
+    border-bottom: 1px solid #292524;
   }
 }
