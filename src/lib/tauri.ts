@@ -1,8 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 
-import type { SessionListItem } from "../types/session";
+import type { SessionDetail, SessionListItem, SessionMessage } from "../types/session";
 
-type ScanSourcesDto = {
+type SessionListItemDto = {
+  id: string;
   source_id: string;
   title: string;
   updated_at: string;
@@ -10,15 +11,63 @@ type ScanSourcesDto = {
   message_count: number;
 };
 
-export async function scanSources(): Promise<SessionListItem[]> {
-  const sessions = await invoke<ScanSourcesDto[]>("scan_sources");
+type SessionMessageDto = {
+  id: string;
+  role: string;
+  content_text: string;
+  created_at: string;
+};
 
-  return sessions.map((session, index) => ({
-    id: `${session.source_id}:${session.updated_at}:${index}`,
+type SessionDetailDto = SessionListItemDto & {
+  started_at: string;
+  ended_at: string;
+  project_path: string;
+  messages: SessionMessageDto[];
+};
+
+function mapMessageRole(role: string): SessionMessage["role"] {
+  if (role === "user" || role === "assistant" || role === "system") {
+    return role;
+  }
+
+  return "assistant";
+}
+
+export async function scanSources(): Promise<SessionListItem[]> {
+  const sessions = await invoke<SessionListItemDto[]>("scan_sources");
+
+  return sessions.map((session) => ({
+    id: session.id,
     sourceId: session.source_id,
     title: session.title,
     updatedAt: session.updated_at,
     projectName: session.project_name,
     messageCount: session.message_count,
   }));
+}
+
+export async function getSessionDetail(id: string): Promise<SessionDetail | null> {
+  const session = await invoke<SessionDetailDto | null>("get_session_detail", { id });
+
+  if (!session) {
+    return null;
+  }
+
+  return {
+    id: session.id,
+    sourceId: session.source_id,
+    title: session.title,
+    updatedAt: session.updated_at,
+    startedAt: session.started_at,
+    endedAt: session.ended_at,
+    projectName: session.project_name,
+    projectPath: session.project_path,
+    messageCount: session.message_count,
+    messages: session.messages.map((message) => ({
+      id: message.id,
+      role: mapMessageRole(message.role),
+      contentText: message.content_text,
+      createdAt: message.created_at,
+    })),
+  };
 }

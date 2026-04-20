@@ -2,7 +2,7 @@ import "./styles.css";
 import { useEffect, useRef, useState } from "react";
 
 import { ThreePaneShell } from "./features/layout/ThreePaneShell";
-import { scanSources } from "./lib/tauri";
+import { getSessionDetail, scanSources } from "./lib/tauri";
 import { useSessionStore } from "./stores/useSessionStore";
 
 function App() {
@@ -10,9 +10,12 @@ function App() {
   const selectedId = useSessionStore((s) => s.selectedId);
   const detail = useSessionStore((s) => s.detail);
   const sourceFilter = useSessionStore((s) => s.sourceFilter);
+  const projectFilter = useSessionStore((s) => s.projectFilter);
+  const timeRange = useSessionStore((s) => s.timeRange);
   const lastScannedAt = useSessionStore((s) => s.lastScannedAt);
   const setSessions = useSessionStore((s) => s.setSessions);
-  const setSourceFilter = useSessionStore((s) => s.setSourceFilter);
+  const setDetail = useSessionStore((s) => s.setDetail);
+  const updateFilters = useSessionStore((s) => s.updateFilters);
   const selectSession = useSessionStore((s) => s.selectSession);
   const markScannedNow = useSessionStore((s) => s.markScannedNow);
   const [status, setStatus] = useState("Ready");
@@ -31,6 +34,34 @@ function App() {
       setStatus("Scan failed");
     }
   }
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!selectedId) {
+      setDetail(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void getSessionDetail(selectedId)
+      .then((value) => {
+        if (!cancelled) {
+          setDetail(value);
+        }
+      })
+      .catch((error) => {
+        console.error(error);
+        if (!cancelled) {
+          setDetail(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId, sessions, setDetail]);
 
   useEffect(() => {
     if (hasAutoScanned.current) {
@@ -65,7 +96,9 @@ function App() {
           selectedId={selectedId}
           detail={detail}
           sourceFilter={sourceFilter}
-          onSourceChange={setSourceFilter}
+          projectFilter={projectFilter}
+          timeRange={timeRange}
+          onFilterChange={updateFilters}
           onSelect={selectSession}
         />
       </div>

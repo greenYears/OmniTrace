@@ -8,7 +8,10 @@ pub mod ingest;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![commands::scan_sources])
+        .invoke_handler(tauri::generate_handler![
+            commands::scan_sources,
+            commands::get_session_detail
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

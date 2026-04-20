@@ -4,13 +4,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./lib/tauri", () => ({
   scanSources: vi.fn(),
+  getSessionDetail: vi.fn(),
 }));
 
 import App from "./App";
-import { scanSources } from "./lib/tauri";
+import { getSessionDetail, scanSources } from "./lib/tauri";
 import { useSessionStore } from "./stores/useSessionStore";
 
 describe("App", () => {
+  const getSessionDetailMock = vi.mocked(getSessionDetail);
   const scanSourcesMock = vi.mocked(scanSources);
 
   beforeEach(() => {
@@ -19,9 +21,12 @@ describe("App", () => {
       selectedId: null,
       detail: null,
       sourceFilter: "all",
+      projectFilter: "all",
+      timeRange: "all",
       lastScannedAt: null,
     });
     scanSourcesMock.mockResolvedValue([]);
+    getSessionDetailMock.mockResolvedValue(null);
   });
 
   it("renders the OmniTrace shell header with the scanned empty state", async () => {
@@ -34,7 +39,7 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: "OmniTrace" })).toBeInTheDocument();
     expect(screen.getByText(/Unified local history viewer/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Scan / Refresh" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "all" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "all" })).toHaveLength(3);
     expect(screen.getByRole("button", { name: "codex" })).toBeInTheDocument();
     expect(await screen.findByText("No sessions found for this filter.")).toBeInTheDocument();
 
@@ -46,5 +51,46 @@ describe("App", () => {
     expect(
       screen.queryByRole("button", { name: "Codex: project-a" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("loads session detail on demand after scan selects a session", async () => {
+    scanSourcesMock.mockResolvedValue([
+      {
+        id: "session:codex:abc",
+        sourceId: "codex",
+        title: "Codex: project-b",
+        updatedAt: "2026-04-20T10:00:00Z",
+        projectName: "project-b",
+        messageCount: 2,
+      },
+    ]);
+    getSessionDetailMock.mockResolvedValue({
+      id: "session:codex:abc",
+      sourceId: "codex",
+      title: "Codex: project-b",
+      updatedAt: "2026-04-20T10:00:00Z",
+      startedAt: "2026-04-20T09:55:00Z",
+      endedAt: "2026-04-20T10:00:00Z",
+      projectName: "project-b",
+      projectPath: "/tmp/project-b",
+      messageCount: 2,
+      messages: [
+        {
+          id: "message:1",
+          role: "user",
+          contentText: "Open this session.",
+          createdAt: "2026-04-20T09:56:00Z",
+        },
+      ],
+    });
+
+    render(<App />);
+
+    expect(await screen.findByRole("button", { name: "Codex: project-b" })).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(getSessionDetailMock).toHaveBeenCalledWith("session:codex:abc");
+      expect(screen.getByText("/tmp/project-b")).toBeInTheDocument();
+    });
   });
 });

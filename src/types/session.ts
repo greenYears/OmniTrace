@@ -1,3 +1,7 @@
+export type TimeRange = "all" | "7d" | "30d";
+
+export type SourceFilter = "all" | "claude_code" | "codex";
+
 export type SessionListItem = {
   id: string;
   sourceId: string;

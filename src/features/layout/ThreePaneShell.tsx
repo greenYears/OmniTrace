@@ -1,5 +1,10 @@
 import { SidebarFilters } from "../sidebar/SidebarFilters";
-import type { SessionDetail, SessionListItem } from "../../types/session";
+import type {
+  SessionDetail,
+  SessionListItem,
+  SourceFilter,
+  TimeRange,
+} from "../../types/session";
 import { SessionDetail as SessionDetailPane } from "../sessions/SessionDetail";
 import { SessionList } from "../sessions/SessionList";
 
@@ -7,8 +12,14 @@ type ThreePaneShellProps = {
   sessions: SessionListItem[];
   selectedId: string | null;
   detail: SessionDetail | null;
-  sourceFilter: string;
-  onSourceChange: (source: string) => void;
+  sourceFilter: SourceFilter;
+  projectFilter: string;
+  timeRange: TimeRange;
+  onFilterChange: (next: {
+    source?: SourceFilter;
+    project?: string;
+    timeRange?: TimeRange;
+  }) => void;
   onSelect: (id: string) => void;
 };
 
@@ -17,13 +28,42 @@ export function ThreePaneShell({
   selectedId,
   detail,
   sourceFilter,
-  onSourceChange,
+  projectFilter,
+  timeRange,
+  onFilterChange,
   onSelect,
 }: ThreePaneShellProps) {
-  const filteredSessions =
-    sourceFilter === "all"
-      ? sessions
-      : sessions.filter((session) => session.sourceId === sourceFilter);
+  const now = Date.now();
+  const filteredSessions = sessions.filter((session) => {
+    const matchesSource =
+      sourceFilter === "all" || session.sourceId === sourceFilter;
+    const matchesProject =
+      projectFilter === "all" || session.projectName === projectFilter;
+
+    if (!matchesSource || !matchesProject) {
+      return false;
+    }
+
+    if (timeRange === "all") {
+      return true;
+    }
+
+    const updatedAtMs = Date.parse(session.updatedAt);
+    if (Number.isNaN(updatedAtMs)) {
+      return false;
+    }
+
+    const ageMs = now - updatedAtMs;
+    const maxAgeMs =
+      timeRange === "7d"
+        ? 7 * 24 * 60 * 60 * 1000
+        : 30 * 24 * 60 * 60 * 1000;
+    return ageMs <= maxAgeMs;
+  });
+  const projects = [
+    "all",
+    ...Array.from(new Set(sessions.map((session) => session.projectName))),
+  ];
   const selectedDetail =
     detail && filteredSessions.some((session) => session.id === detail.id)
       ? detail
@@ -33,8 +73,12 @@ export function ThreePaneShell({
     <div className="three-pane-shell" aria-label="Session viewer">
       <SidebarFilters
         sources={["all", "claude_code", "codex"]}
+        projects={projects}
+        timeRanges={["all", "7d", "30d"]}
         source={sourceFilter}
-        onSourceChange={onSourceChange}
+        project={projectFilter}
+        timeRange={timeRange}
+        onChange={onFilterChange}
       />
 
       {filteredSessions.length === 0 ? (

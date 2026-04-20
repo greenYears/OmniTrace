@@ -1,34 +1,85 @@
 import clsx from "clsx";
 
+import type { SourceFilter, TimeRange } from "../../types/session";
+
 type SidebarFiltersProps = {
-  sources: string[];
-  source: string;
-  onSourceChange: (source: string) => void;
+  sources: SourceFilter[];
+  projects: string[];
+  timeRanges: TimeRange[];
+  source: SourceFilter;
+  project: string;
+  timeRange: TimeRange;
+  onChange: (next: {
+    source?: SourceFilter;
+    project?: string;
+    timeRange?: TimeRange;
+  }) => void;
 };
 
-export function SidebarFilters({
-  sources,
-  source,
-  onSourceChange,
-}: SidebarFiltersProps) {
+type FilterGroupProps<T extends string> = {
+  title: string;
+  options: T[];
+  value: T;
+  onSelect: (value: T) => void;
+};
+
+function FilterGroup<T extends string>({
+  title,
+  options,
+  value,
+  onSelect,
+}: FilterGroupProps<T>) {
   return (
-    <aside className="three-pane three-pane-left sidebar-filters" aria-label="Filters">
-      <h2 className="sidebar-filters-title">Sources</h2>
+    <section className="sidebar-filter-group">
+      <h2 className="sidebar-filters-title">{title}</h2>
       <div className="sidebar-filter-list">
-        {sources.map((item) => (
+        {options.map((item) => (
           <button
             key={item}
             type="button"
             className={clsx(
               "sidebar-filter-button",
-              source === item && "is-selected",
+              value === item && "is-selected",
             )}
-            onClick={() => onSourceChange(item)}
+            onClick={() => onSelect(item)}
           >
             {item}
           </button>
         ))}
       </div>
+    </section>
+  );
+}
+
+export function SidebarFilters({
+  sources,
+  projects,
+  timeRanges,
+  source,
+  project,
+  timeRange,
+  onChange,
+}: SidebarFiltersProps) {
+  return (
+    <aside className="three-pane three-pane-left sidebar-filters" aria-label="Filters">
+      <FilterGroup
+        title="Sources"
+        options={sources}
+        value={source}
+        onSelect={(value) => onChange({ source: value })}
+      />
+      <FilterGroup
+        title="Projects"
+        options={projects}
+        value={project}
+        onSelect={(value) => onChange({ project: value })}
+      />
+      <FilterGroup
+        title="Time"
+        options={timeRanges}
+        value={timeRange}
+        onSelect={(value) => onChange({ timeRange: value })}
+      />
     </aside>
   );
 }

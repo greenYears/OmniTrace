@@ -112,6 +112,10 @@ body {
   padding: 16px;
 }
 
+.sidebar-filter-group + .sidebar-filter-group {
+  margin-top: 24px;
+}
+
 .sidebar-filters-title {
   margin: 0 0 12px;
   color: #78716c;
