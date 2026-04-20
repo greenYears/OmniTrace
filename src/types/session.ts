@@ -9,7 +9,7 @@ export type SessionListItem = {
 
 export type SessionMessage = {
   id: string;
-  role: string;
+  role: "user" | "assistant" | "system";
   contentText: string;
   createdAt: string;
 };
@@ -17,7 +17,6 @@ export type SessionMessage = {
 export type SessionDetail = SessionListItem & {
   projectPath: string;
   startedAt: string;
-  endedAt: string | null;
+  endedAt: string;
   messages: SessionMessage[];
 };
-

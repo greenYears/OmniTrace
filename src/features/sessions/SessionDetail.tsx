@@ -8,7 +8,7 @@ export function SessionDetail({ detail }: SessionDetailProps) {
   if (!detail) {
     return (
       <section className="session-detail session-detail-empty" aria-label="Session detail">
-        <p>Select a session to view its messages.</p>
+        <p>Select a session to inspect its full history.</p>
       </section>
     );
   }
@@ -16,9 +16,7 @@ export function SessionDetail({ detail }: SessionDetailProps) {
   return (
     <section className="session-detail" aria-label="Session detail">
       <header className="session-detail-header">
-        <h2 className="session-detail-title">
-          {detail.title}: {detail.projectName}
-        </h2>
+        <h2 className="session-detail-title">{detail.title}</h2>
         <p className="session-detail-path">{detail.projectPath}</p>
       </header>
 
@@ -33,4 +31,3 @@ export function SessionDetail({ detail }: SessionDetailProps) {
     </section>
   );
 }
-

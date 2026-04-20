@@ -14,7 +14,7 @@ describe("SessionList", () => {
           {
             id: "1",
             sourceId: "codex",
-            title: "Codex",
+            title: "Claude Code: project-a",
             updatedAt: "2026-04-20T12:00:00Z",
             projectName: "project-a",
             messageCount: 3,
@@ -22,7 +22,7 @@ describe("SessionList", () => {
           {
             id: "2",
             sourceId: "codex",
-            title: "Codex",
+            title: "Codex: project-b",
             updatedAt: "2026-04-20T12:01:00Z",
             projectName: "project-b",
             messageCount: 7,
@@ -34,11 +34,12 @@ describe("SessionList", () => {
     );
 
     expect(
-      screen.getByRole("button", { name: "Codex: project-a" }),
+      screen.getByRole("button", { name: "Claude Code: project-a" }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Codex: project-b" }),
     ).toBeInTheDocument();
+    expect(screen.getByText("project-b")).toBeInTheDocument();
 
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Codex: project-b" }));
@@ -46,4 +47,3 @@ describe("SessionList", () => {
     expect(onSelect).toHaveBeenCalledWith("2");
   });
 });
-

@@ -13,7 +13,7 @@ export function SessionList({ sessions, selectedId, onSelect }: SessionListProps
     <div className="session-list" aria-label="Sessions">
       {sessions.map((session) => {
         const isSelected = session.id === selectedId;
-        const label = `${session.title}: ${session.projectName}`;
+        const label = session.title;
 
         return (
           <button
@@ -28,7 +28,7 @@ export function SessionList({ sessions, selectedId, onSelect }: SessionListProps
               {label}
             </span>
             <span className="session-list-item-meta" aria-hidden="true">
-              {session.messageCount} messages
+              {session.projectName}
             </span>
           </button>
         );
