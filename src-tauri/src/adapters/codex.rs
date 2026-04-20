@@ -37,21 +37,31 @@ impl SessionAdapter for CodexAdapter {
         let mut started_at: Option<String> = None;
         let mut ended_at: Option<String> = None;
         let mut messages = Vec::new();
+        let mut seq_no = 0_i64;
 
         for (i, line) in reader.lines().enumerate() {
-            let line = line.with_context(|| format!("read line {i}"))?;
+            let line_no = i + 1;
+            let line = line.with_context(|| format!("read line {line_no}"))?;
             if line.trim().is_empty() {
                 continue;
             }
             let v: Value = serde_json::from_str(&line)
-                .with_context(|| format!("parse json line {i}: {}", path.display()))?;
+                .with_context(|| format!("parse json line {line_no}: {}", path.display()))?;
 
             let sid = v
                 .get("session_id")
                 .and_then(|x| x.as_str())
                 .ok_or_else(|| anyhow!("missing session_id"))?
                 .to_string();
-            if external_id.is_none() {
+            if let Some(existing) = &external_id {
+                if existing != &sid {
+                    return Err(anyhow!(
+                        "mismatched session_id at line {} in {}",
+                        line_no,
+                        path.display()
+                    ));
+                }
+            } else {
                 external_id = Some(sid);
             }
 
@@ -68,7 +78,7 @@ impl SessionAdapter for CodexAdapter {
                 role: "user".to_string(),
                 content_text: text,
                 created_at: created_at.clone(),
-                seq_no: i as i64,
+                seq_no,
                 metadata_json: "{}".to_string(),
             };
 
@@ -77,6 +87,7 @@ impl SessionAdapter for CodexAdapter {
             }
             ended_at = Some(created_at.clone());
             messages.push(msg);
+            seq_no += 1;
         }
 
         let external_id = external_id.ok_or_else(|| anyhow!("empty session file"))?;
@@ -100,4 +111,3 @@ impl SessionAdapter for CodexAdapter {
         })
     }
 }
-

@@ -93,17 +93,27 @@ impl SessionAdapter for ClaudeCodeAdapter {
         let mut started_at: Option<String> = None;
         let mut ended_at: Option<String> = None;
         let mut messages = Vec::new();
+        let mut seq_no = 0_i64;
 
         for (i, line) in reader.lines().enumerate() {
-            let line = line.with_context(|| format!("read line {i}"))?;
+            let line_no = i + 1;
+            let line = line.with_context(|| format!("read line {line_no}"))?;
             if line.trim().is_empty() {
                 continue;
             }
             let v: Value = serde_json::from_str(&line)
-                .with_context(|| format!("parse json line {i}: {}", path.display()))?;
+                .with_context(|| format!("parse json line {line_no}: {}", path.display()))?;
 
-            let (sid, msg, created_at, proj_name) = Self::parse_line(&v, i as i64)?;
-            if external_id.is_none() {
+            let (sid, msg, created_at, proj_name) = Self::parse_line(&v, seq_no)?;
+            if let Some(existing) = &external_id {
+                if existing != &sid {
+                    return Err(anyhow!(
+                        "mismatched sessionId at line {} in {}",
+                        line_no,
+                        path.display()
+                    ));
+                }
+            } else {
                 external_id = Some(sid);
             }
             if project_path.is_none() {
@@ -123,6 +133,7 @@ impl SessionAdapter for ClaudeCodeAdapter {
             }
             ended_at = Some(created_at.clone());
             messages.push(msg);
+            seq_no += 1;
         }
 
         let external_id = external_id.ok_or_else(|| anyhow!("empty session file"))?;
@@ -148,4 +159,3 @@ impl SessionAdapter for ClaudeCodeAdapter {
         })
     }
 }
-

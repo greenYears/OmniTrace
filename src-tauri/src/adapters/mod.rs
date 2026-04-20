@@ -19,6 +19,9 @@ pub(crate) fn discover_jsonl_sessions(root: &Path) -> io::Result<Vec<PathBuf>> {
         for entry in std::fs::read_dir(dir)? {
             let entry = entry?;
             let path = entry.path();
+            if std::fs::symlink_metadata(&path)?.file_type().is_symlink() {
+                continue;
+            }
             if path.is_dir() {
                 walk(&path, out)?;
                 continue;
