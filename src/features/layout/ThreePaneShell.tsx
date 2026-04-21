@@ -16,8 +16,8 @@ type ThreePaneShellProps = {
   projectFilter: string;
   timeRange: TimeRange;
   onFilterChange: (next: {
-    source?: SourceFilter;
-    project?: string;
+    sourceFilter?: SourceFilter;
+    projectFilter?: string;
     timeRange?: TimeRange;
   }) => void;
   onSelect: (id: string) => void;

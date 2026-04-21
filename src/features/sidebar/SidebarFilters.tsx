@@ -10,8 +10,8 @@ type SidebarFiltersProps = {
   project: string;
   timeRange: TimeRange;
   onChange: (next: {
-    source?: SourceFilter;
-    project?: string;
+    sourceFilter?: SourceFilter;
+    projectFilter?: string;
     timeRange?: TimeRange;
   }) => void;
 };
@@ -72,13 +72,13 @@ export function SidebarFilters({
         title="Sources"
         options={sources}
         value={source}
-        onSelect={(value) => onChange({ source: value })}
+        onSelect={(value) => onChange({ sourceFilter: value })}
       />
       <FilterGroup
         title="Projects"
         options={projects}
         value={project}
-        onSelect={(value) => onChange({ project: value })}
+        onSelect={(value) => onChange({ projectFilter: value })}
       />
     </aside>
   );

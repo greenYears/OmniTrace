@@ -24,7 +24,7 @@ describe("SidebarFilters", () => {
     await user.click(screen.getByRole("button", { name: "project-b" }));
     await user.click(screen.getByRole("button", { name: "30d" }));
 
-    expect(onChange).toHaveBeenCalledWith({ project: "project-b" });
+    expect(onChange).toHaveBeenCalledWith({ projectFilter: "project-b" });
     expect(onChange).toHaveBeenCalledWith({ timeRange: "30d" });
   });
 });
