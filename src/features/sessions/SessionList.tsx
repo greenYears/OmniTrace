@@ -19,9 +19,9 @@ function formatTimeAgo(dateStr: string): string {
   return `${days}d ago`;
 }
 
-function getSourceLabel(sourceId: string): string {
-  if (sourceId === "codex") return "Codex";
-  return "Claude";
+function getSourceIcon(sourceId: string): { text: string; cls: string } {
+  if (sourceId === "codex") return { text: "CX", cls: "is-codex" };
+  return { text: "C", cls: "is-claude-code" };
 }
 
 export function SessionList({ sessions, selectedId, onSelect }: SessionListProps) {
@@ -42,7 +42,7 @@ export function SessionList({ sessions, selectedId, onSelect }: SessionListProps
           >
             <div className="session-list-item-top">
               <span className="session-list-item-title">{label}</span>
-              <span className="session-list-item-source">{getSourceLabel(session.sourceId)}</span>
+              <span className={clsx("source-icon", getSourceIcon(session.sourceId).cls)} aria-label={session.sourceId}>{getSourceIcon(session.sourceId).text}</span>
             </div>
             <div className="session-list-item-meta">
               <span>{session.projectName}</span>
