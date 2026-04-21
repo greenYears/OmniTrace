@@ -269,24 +269,13 @@ body {
   color: #86868b;
 }
 
-.session-detail-header {
-  border-bottom: 1px solid #e5e5e7;
-  padding-bottom: 12px;
-  margin-bottom: 16px;
-}
-
-.session-detail-title {
-  margin: 0;
-  font-size: 17px;
-  font-weight: 600;
-  line-height: 1.2;
-}
-
-.session-detail-meta {
+.session-detail-meta-bar {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 4px;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid #e5e5e7;
 }
 
 .session-detail-path {

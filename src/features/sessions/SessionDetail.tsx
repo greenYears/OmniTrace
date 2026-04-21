@@ -36,13 +36,10 @@ export function SessionDetail({ detail }: SessionDetailProps) {
 
   return (
     <section className="session-detail" aria-label="Session detail">
-      <header className="session-detail-header">
-        <h2 className="session-detail-title">{stripTitle(detail.title)}</h2>
-        <div className="session-detail-meta">
-          <span className="session-detail-path">{detail.projectPath}</span>
-          <span className="session-detail-source-badge">{sourceMeta.label}</span>
-        </div>
-      </header>
+      <div className="session-detail-meta-bar">
+        <span className="session-detail-path">{detail.projectPath}</span>
+        <span className="session-detail-source-badge">{sourceMeta.label}</span>
+      </div>
 
       <ol className="session-message-list" aria-label="Messages">
         {detail.messages.map((msg) => (
