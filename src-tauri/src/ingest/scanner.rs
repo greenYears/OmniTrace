@@ -10,7 +10,7 @@ use serde_json::Value;
 
 use crate::adapters::claude_code::ClaudeCodeAdapter;
 use crate::adapters::codex::CodexAdapter;
-use crate::adapters::SessionAdapter;
+use crate::adapters::{discover_jsonl_sessions, SessionAdapter};
 use crate::domain::models::{MessageRecord, NormalizedSession, ProjectRecord};
 
 #[derive(Debug, Clone)]
@@ -49,7 +49,13 @@ struct CodexHistoryEntry {
 struct CodexSessionIndexEntry {
     id: String,
     thread_name: Option<String>,
+    cwd: Option<String>,
     updated_at: Option<String>,
+}
+
+#[derive(Debug, Default)]
+struct CodexSessionMeta {
+    cwd: Option<String>,
 }
 
 #[derive(Debug, Default)]
@@ -157,6 +163,49 @@ fn read_claude_session_meta(root: &Path) -> Result<HashMap<String, ClaudeSession
     Ok(out)
 }
 
+fn read_codex_session_meta(root: &Path) -> Result<HashMap<String, CodexSessionMeta>> {
+    let sessions_dir = root.join("sessions");
+    if !sessions_dir.exists() {
+        return Ok(HashMap::new());
+    }
+
+    let mut out = HashMap::new();
+    for path in discover_jsonl_sessions(&sessions_dir)
+        .with_context(|| format!("discover codex sessions in {}", sessions_dir.display()))?
+    {
+        let file = File::open(&path).with_context(|| format!("open {}", path.display()))?;
+        let reader = BufReader::new(file);
+
+        for (index, line) in reader.lines().enumerate() {
+            let line_no = index + 1;
+            let line = line.with_context(|| format!("read line {line_no} from {}", path.display()))?;
+            if line.trim().is_empty() {
+                continue;
+            }
+
+            let value: Value = serde_json::from_str(&line)
+                .with_context(|| format!("parse json line {line_no} from {}", path.display()))?;
+            if value.get("type").and_then(|v| v.as_str()) != Some("session_meta") {
+                continue;
+            }
+
+            let payload = value.get("payload").unwrap_or(&Value::Null);
+            if let Some(session_id) = payload.get("id").and_then(|v| v.as_str()) {
+                out.entry(session_id.to_string())
+                    .or_insert_with(|| CodexSessionMeta {
+                        cwd: payload
+                            .get("cwd")
+                            .and_then(|v| v.as_str())
+                            .map(|v| v.to_string()),
+                    });
+            }
+            break;
+        }
+    }
+
+    Ok(out)
+}
+
 fn project_display_name(path: &str) -> String {
     Path::new(path)
         .file_name()
@@ -243,7 +292,7 @@ fn scan_real_claude_sources(root: &Path) -> Result<Vec<NormalizedSession>> {
         sessions.push(NormalizedSession {
             source_id: "claude_code".to_string(),
             external_id: session_id,
-            title: format!("Claude Code: {project_name}"),
+            title: project_name.clone(),
             started_at,
             ended_at: ended_at.clone(),
             updated_at: ended_at,
@@ -267,6 +316,7 @@ fn scan_real_codex_sources(root: &Path) -> Result<Vec<NormalizedSession>> {
 
     let entries: Vec<CodexHistoryEntry> = read_jsonl(&history)?;
     let index_entries: Vec<CodexSessionIndexEntry> = read_jsonl(&root.join("session_index.jsonl"))?;
+    let meta_by_session = read_codex_session_meta(root)?;
     let index_by_session: HashMap<String, CodexSessionIndexEntry> = index_entries
         .into_iter()
         .map(|entry| (entry.id.clone(), entry))
@@ -295,10 +345,15 @@ fn scan_real_codex_sources(root: &Path) -> Result<Vec<NormalizedSession>> {
         let started_at = rfc3339_seconds(started_at_s)?;
         let ended_at = rfc3339_seconds(ended_at_s)?;
         let index = index_by_session.get(&session_id);
+        let project_path = index
+            .and_then(|entry| entry.cwd.clone())
+            .or_else(|| meta_by_session.get(&session_id).and_then(|meta| meta.cwd.clone()))
+            .unwrap_or_else(|| "Unknown Project".to_string());
+        let project_name = project_display_name(&project_path);
         let title_suffix = index
             .and_then(|entry| entry.thread_name.clone())
             .filter(|value| !value.trim().is_empty())
-            .unwrap_or_else(|| session_id.clone());
+            .unwrap_or_else(|| project_name.clone());
         let updated_at = index
             .and_then(|entry| entry.updated_at.clone())
             .unwrap_or_else(|| ended_at.clone());
@@ -321,13 +376,13 @@ fn scan_real_codex_sources(root: &Path) -> Result<Vec<NormalizedSession>> {
         sessions.push(NormalizedSession {
             source_id: "codex".to_string(),
             external_id: session_id.clone(),
-            title: format!("Codex: {title_suffix}"),
+            title: title_suffix,
             started_at,
             ended_at,
             updated_at,
             project: ProjectRecord {
-                path: "Unknown Project".to_string(),
-                display_name: "Unknown Project".to_string(),
+                path: project_path,
+                display_name: project_name,
             },
             messages,
             raw_ref: history.display().to_string(),

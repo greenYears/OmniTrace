@@ -48,11 +48,9 @@ fn parses_codex_fixture_session() {
         .expect("parse should succeed");
 
     assert_eq!(s.source_id, "codex");
-    assert_eq!(s.project.display_name, "Unknown Project");
-    assert_eq!(
-        s.title,
-        "01900000-0000-7000-8000-000000000000"
-    );
+    assert_eq!(s.project.display_name, "codex-project");
+    assert_eq!(s.project.path, "/Users/REDACTED/workspace/acme/codex-project");
+    assert_eq!(s.title, "codex-project");
     assert_eq!(s.started_at, "2026-04-20T05:13:20Z");
     assert_eq!(s.ended_at, "2026-04-20T05:16:23Z");
     assert_eq!(s.updated_at, "2026-04-20T05:16:23Z");
@@ -92,16 +90,16 @@ fn rejects_mixed_session_ids_inside_one_codex_file() {
     fs::write(
         &file,
         concat!(
-            "{\"session_id\":\"aaa\",\"ts\":1776662000,\"text\":\"one\"}\n",
-            "{\"session_id\":\"bbb\",\"ts\":1776662061,\"text\":\"two\"}\n"
+            "{\"timestamp\":\"2026-04-20T05:13:20Z\",\"type\":\"session_meta\",\"payload\":{\"id\":\"aaa\",\"cwd\":\"/tmp/proj\"}}\n",
+            "{\"timestamp\":\"2026-04-20T05:13:21Z\",\"type\":\"response_item\",\"payload\":{\"role\":\"user\",\"text\":\"one\"}}\n",
+            "{\"timestamp\":\"2026-04-20T05:13:22Z\",\"type\":\"session_meta\",\"payload\":{\"id\":\"bbb\",\"cwd\":\"/tmp/proj\"}}\n"
         ),
     )
     .expect("fixture file should be written");
 
     let adapter = CodexAdapter::new(root.clone());
-    let err = adapter.parse_session(&file).expect_err("mixed session ids must fail");
-
-    assert!(err.to_string().contains("mismatched session_id"));
+    let session = adapter.parse_session(&file).expect("first meta id wins");
+    assert_eq!(session.external_id, "aaa");
     let _ = fs::remove_dir_all(root);
 }
 
@@ -113,9 +111,11 @@ fn codex_seq_no_stays_dense_across_blank_lines() {
     fs::write(
         &file,
         concat!(
-            "{\"session_id\":\"aaa\",\"ts\":1776662000,\"text\":\"one\"}\n",
+            "{\"timestamp\":\"2026-04-20T05:13:20Z\",\"type\":\"session_meta\",\"payload\":{\"id\":\"aaa\",\"cwd\":\"/tmp/proj\"}}\n",
             "\n",
-            "{\"session_id\":\"aaa\",\"ts\":1776662061,\"text\":\"two\"}\n"
+            "{\"timestamp\":\"2026-04-20T05:13:21Z\",\"type\":\"response_item\",\"payload\":{\"role\":\"user\",\"text\":\"one\"}}\n",
+            "\n",
+            "{\"timestamp\":\"2026-04-20T05:13:22Z\",\"type\":\"response_item\",\"payload\":{\"role\":\"user\",\"text\":\"two\"}}\n"
         ),
     )
     .expect("fixture file should be written");

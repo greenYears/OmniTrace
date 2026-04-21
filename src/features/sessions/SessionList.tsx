@@ -34,6 +34,7 @@ export function SessionList({ sessions, selectedId, onSelect }: SessionListProps
       {sessions.map((session) => {
         const isSelected = session.id === selectedId;
         const displayTitle = stripTitle(session.title);
+        const showProjectName = session.projectName !== displayTitle;
 
         return (
           <button
@@ -49,7 +50,7 @@ export function SessionList({ sessions, selectedId, onSelect }: SessionListProps
               <span className={clsx("source-icon", getSourceIcon(session.sourceId).cls)} aria-label={session.sourceId}>{getSourceIcon(session.sourceId).text}</span>
             </div>
             <div className="session-list-item-meta">
-              <span>{session.projectName}</span>
+              {showProjectName && <span>{session.projectName}</span>}
               <span>{formatTimeAgo(session.updatedAt)}</span>
             </div>
             {session.preview && (

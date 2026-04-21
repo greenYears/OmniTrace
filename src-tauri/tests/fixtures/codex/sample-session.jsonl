@@ -1,4 +1,5 @@
-{"session_id":"01900000-0000-7000-8000-000000000000","ts":1776662000,"text":"Please summarize the INSTALL steps and list the required setup commands."}
-{"session_id":"01900000-0000-7000-8000-000000000000","ts":1776662061,"text":"请解释这个签名算法的输入输出，并指出最容易踩坑的编码点。"}
-{"session_id":"01900000-0000-7000-8000-000000000000","ts":1776662122,"text":"我需要把 Map<String, Object> 替换成 Map<String, String> 来适配 helper 方法。"}
-{"session_id":"01900000-0000-7000-8000-000000000000","ts":1776662183,"text":"OK"}
+{"timestamp":"2026-04-20T05:13:20Z","type":"session_meta","payload":{"id":"01900000-0000-7000-8000-000000000000","cwd":"/Users/REDACTED/workspace/acme/codex-project"}}
+{"timestamp":"2026-04-20T05:13:20Z","type":"response_item","payload":{"role":"user","text":"Please summarize the INSTALL steps."}}
+{"timestamp":"2026-04-20T05:14:30Z","type":"response_item","payload":{"role":"assistant","text":"Here are the install steps..."}}
+{"timestamp":"2026-04-20T05:15:00Z","type":"response_item","payload":{"role":"user","text":"And the required setup commands?"}}
+{"timestamp":"2026-04-20T05:16:23Z","type":"response_item","payload":{"role":"assistant","text":"Run `make setup` followed by `make test`."}}

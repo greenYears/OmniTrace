@@ -3,7 +3,7 @@ use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Context, Result};
-use chrono::{DateTime, SecondsFormat, Utc};
+use chrono::{DateTime, SecondsFormat};
 use serde_json::Value;
 
 use crate::adapters::{discover_jsonl_sessions, SessionAdapter};
@@ -17,6 +17,30 @@ pub struct CodexAdapter {
 impl CodexAdapter {
     pub fn new(root: PathBuf) -> Self {
         Self { root }
+    }
+
+    fn parse_timestamp(v: &Value, key: &str) -> Result<String> {
+        let raw = v
+            .get(key)
+            .and_then(|x| x.as_str())
+            .ok_or_else(|| anyhow!("missing {key}"))?;
+
+        if raw.contains('T') {
+            return Ok(raw.to_string());
+        }
+
+        let ts_secs = raw.parse::<i64>().map_err(|_| anyhow!("not a number: {raw}"))?;
+        let dt = DateTime::from_timestamp(ts_secs, 0)
+            .ok_or_else(|| anyhow!("invalid timestamp: {raw}"))?;
+        Ok(dt.to_rfc3339_opts(SecondsFormat::Millis, true))
+    }
+
+    fn extract_string(v: &Value, path: &[&str]) -> Option<String> {
+        let mut current = v;
+        for key in path {
+            current = current.get(*key)?;
+        }
+        current.as_str().map(|s| s.to_string())
     }
 }
 
@@ -34,6 +58,8 @@ impl SessionAdapter for CodexAdapter {
         let reader = BufReader::new(f);
 
         let mut external_id: Option<String> = None;
+        let mut project_path: Option<String> = None;
+        let mut project_name: Option<String> = None;
         let mut started_at: Option<String> = None;
         let mut ended_at: Option<String> = None;
         let mut messages = Vec::new();
@@ -48,63 +74,87 @@ impl SessionAdapter for CodexAdapter {
             let v: Value = serde_json::from_str(&line)
                 .with_context(|| format!("parse json line {line_no}: {}", path.display()))?;
 
-            let sid = v
-                .get("session_id")
-                .and_then(|x| x.as_str())
-                .ok_or_else(|| anyhow!("missing session_id"))?
-                .to_string();
-            if let Some(existing) = &external_id {
-                if existing != &sid {
-                    return Err(anyhow!(
-                        "mismatched session_id at line {} in {}",
-                        line_no,
-                        path.display()
-                    ));
+            let msg_type = v.get("type").and_then(|t| t.as_str()).unwrap_or("");
+            let payload = v.get("payload").cloned().unwrap_or(Value::Null);
+
+            match msg_type {
+                "session_meta" => {
+                    if external_id.is_none() {
+                        external_id = Self::extract_string(&payload, &["id"]);
+                    }
+                    if project_path.is_none() {
+                        if let Some(cwd) = Self::extract_string(&payload, &["cwd"]) {
+                            project_path = Some(cwd.clone());
+                            project_name = Some(
+                                Path::new(&cwd)
+                                    .file_name()
+                                    .and_then(|n| n.to_str())
+                                    .unwrap_or("Unknown Project")
+                                    .to_string(),
+                            );
+                        }
+                    }
+                    if started_at.is_none() {
+                        started_at = Self::parse_timestamp(&v, "timestamp").ok();
+                    }
                 }
-            } else {
-                external_id = Some(sid);
+                "response_item" => {
+                    let role = payload
+                        .get("role")
+                        .and_then(|r| r.as_str())
+                        .unwrap_or("user");
+
+                    if role == "user" || role == "assistant" {
+                        let content_text = payload
+                            .get("text")
+                            .and_then(|t| t.as_str())
+                            .unwrap_or("")
+                            .to_string();
+
+                        let created_at = Self::parse_timestamp(&v, "timestamp").ok();
+
+                        if started_at.is_none() {
+                            started_at = created_at.clone();
+                        }
+                        ended_at = created_at.clone();
+
+                        messages.push(MessageRecord {
+                            role: role.to_string(),
+                            content_text,
+                            created_at: created_at.unwrap_or_default(),
+                            seq_no,
+                            metadata_json: "{}".to_string(),
+                        });
+                        seq_no += 1;
+                    }
+                }
+                _ => {}
             }
-
-            let ts_s = v
-                .get("ts")
-                .and_then(|x| x.as_i64())
-                .ok_or_else(|| anyhow!("missing ts"))?;
-            let created_at = DateTime::<Utc>::from_timestamp(ts_s, 0)
-                .ok_or_else(|| anyhow!("invalid timestamp seconds: {ts_s}"))?
-                .to_rfc3339_opts(SecondsFormat::Secs, true);
-
-            let text = v.get("text").and_then(|x| x.as_str()).unwrap_or("").to_string();
-            let msg = MessageRecord {
-                role: "user".to_string(),
-                content_text: text,
-                created_at: created_at.clone(),
-                seq_no,
-                metadata_json: "{}".to_string(),
-            };
-
-            if started_at.is_none() {
-                started_at = Some(created_at.clone());
-            }
-            ended_at = Some(created_at.clone());
-            messages.push(msg);
-            seq_no += 1;
         }
 
-        let external_id = external_id.ok_or_else(|| anyhow!("empty session file"))?;
-        let started_at = started_at.ok_or_else(|| anyhow!("empty session file"))?;
+        let external_id = external_id
+            .or_else(|| {
+                path.file_stem()
+                    .and_then(|s| s.to_str())
+                    .map(|s| s.to_string())
+            })
+            .ok_or_else(|| anyhow!("empty session file: {}", path.display()))?;
+        let started_at = started_at.ok_or_else(|| anyhow!("no timestamps in session file"))?;
         let ended_at = ended_at.clone().unwrap_or_else(|| started_at.clone());
         let updated_at = ended_at.clone();
+        let project_path = project_path.unwrap_or_else(|| "Unknown Project".to_string());
+        let project_name = project_name.unwrap_or_else(|| "Unknown Project".to_string());
 
         Ok(NormalizedSession {
             source_id: self.source_id().to_string(),
             external_id: external_id.clone(),
-            title: external_id.clone(),
+            title: project_name.clone(),
             started_at,
             ended_at,
             updated_at,
             project: ProjectRecord {
-                path: "Unknown Project".to_string(),
-                display_name: "Unknown Project".to_string(),
+                path: project_path,
+                display_name: project_name,
             },
             messages,
             raw_ref: path.display().to_string(),

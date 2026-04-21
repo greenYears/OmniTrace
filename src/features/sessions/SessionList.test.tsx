@@ -49,4 +49,26 @@ describe("SessionList", () => {
 
     expect(onSelect).toHaveBeenCalledWith("2");
   });
+
+  it("does not render the project name twice when title already equals project name", () => {
+    render(
+      <SessionList
+        sessions={[
+          {
+            id: "1",
+            sourceId: "claude_code",
+            title: "OmniTrace",
+            updatedAt: "2026-04-21T05:58:49.485Z",
+            projectName: "OmniTrace",
+            messageCount: 3,
+            preview: "请优化一下下面的布局和排版。",
+          },
+        ]}
+        selectedId="1"
+        onSelect={vi.fn()}
+      />,
+    );
+
+    expect(screen.getAllByText("OmniTrace")).toHaveLength(1);
+  });
 });

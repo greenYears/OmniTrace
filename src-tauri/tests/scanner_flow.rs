@@ -65,8 +65,10 @@ fn scan_and_upsert_real_history_layout_end_to_end() {
     let home = temp_path("real-history");
     let claude_sessions = home.join(".claude/sessions");
     let codex_root = home.join(".codex");
+    let codex_sessions = codex_root.join("sessions/2026/04/20");
     fs::create_dir_all(&claude_sessions).expect("claude sessions dir should be created");
     fs::create_dir_all(&codex_root).expect("codex dir should be created");
+    fs::create_dir_all(&codex_sessions).expect("codex nested sessions dir should be created");
 
     fs::write(
         home.join(".claude/history.jsonl"),
@@ -95,12 +97,21 @@ fn scan_and_upsert_real_history_layout_end_to_end() {
         "{\"id\":\"codex-1\",\"thread_name\":\"Thread A\",\"updated_at\":\"2026-04-20T05:14:21Z\"}\n",
     )
     .expect("codex index should be written");
+    fs::write(
+        codex_sessions.join("rollout-2026-04-20T05-13-20-codex-1.jsonl"),
+        concat!(
+            "{\"timestamp\":\"2026-04-20T05:13:20Z\",\"type\":\"session_meta\",\"payload\":{\"id\":\"codex-1\",\"cwd\":\"/Users/test/workspace/bravo\"}}\n",
+            "{\"timestamp\":\"2026-04-20T05:13:21Z\",\"type\":\"response_item\",\"payload\":{\"role\":\"user\",\"text\":\"one\"}}\n"
+        ),
+    )
+    .expect("codex session metadata should be written");
 
     let result = scan_home_sources(home.clone()).expect("scan should succeed");
 
     assert_eq!(result.sessions.len(), 2);
     assert_eq!(result.sessions[0].source_id, "codex");
-    assert_eq!(result.sessions[0].title, "Codex: Thread A");
+    assert_eq!(result.sessions[0].title, "Thread A");
+    assert_eq!(result.sessions[0].project.display_name, "bravo");
     assert_eq!(result.sessions[1].source_id, "claude_code");
     assert_eq!(result.sessions[1].project.display_name, "alpha");
 
