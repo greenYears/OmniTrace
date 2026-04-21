@@ -24,24 +24,28 @@ function getSourceIcon(sourceId: string): { text: string; cls: string } {
   return { text: "C", cls: "is-claude-code" };
 }
 
+function stripTitle(title: string): string {
+  return title.replace(/^(Claude Code|Codex):\s*/, "");
+}
+
 export function SessionList({ sessions, selectedId, onSelect }: SessionListProps) {
   return (
     <div className="session-list" aria-label="Sessions">
       {sessions.map((session) => {
         const isSelected = session.id === selectedId;
-        const label = session.title;
+        const displayTitle = stripTitle(session.title);
 
         return (
           <button
             key={session.id}
             type="button"
             className={clsx("session-list-item", isSelected && "is-selected")}
-            aria-label={label}
+            aria-label={session.title}
             aria-current={isSelected ? "true" : undefined}
             onClick={() => onSelect(session.id)}
           >
             <div className="session-list-item-top">
-              <span className="session-list-item-title">{label}</span>
+              <span className="session-list-item-title">{displayTitle}</span>
               <span className={clsx("source-icon", getSourceIcon(session.sourceId).cls)} aria-label={session.sourceId}>{getSourceIcon(session.sourceId).text}</span>
             </div>
             <div className="session-list-item-meta">

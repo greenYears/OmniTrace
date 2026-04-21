@@ -41,7 +41,7 @@ describe("SessionList", () => {
     expect(
       screen.getByRole("button", { name: "Codex: project-b" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("project-b")).toBeInTheDocument();
+    expect(screen.getAllByText("project-b").length).toBeGreaterThan(0);
     expect(screen.getAllByText("CX").length).toBeGreaterThan(0);
 
     const user = userEvent.setup();
