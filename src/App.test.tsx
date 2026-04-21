@@ -75,6 +75,7 @@ describe("App", () => {
       projectName: "project-b",
       projectPath: "/tmp/project-b",
       messageCount: 2,
+      preview: "Open this session.",
       messages: [
         {
           id: "message:1",

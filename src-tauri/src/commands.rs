@@ -35,6 +35,7 @@ pub struct SessionDetailDto {
     pub project_name: String,
     pub project_path: String,
     pub message_count: i64,
+    pub preview: String,
     pub messages: Vec<SessionMessageDto>,
 }
 
@@ -109,18 +110,25 @@ fn load_session_detail(
         .query_row(
             r#"
 SELECT
-  sessions.id,
-  sessions.source_id,
-  sessions.title,
-  sessions.updated_at,
-  sessions.started_at,
-  sessions.ended_at,
-  projects.display_name,
-  projects.path,
-  sessions.message_count
-FROM sessions
-JOIN projects ON projects.id = sessions.project_id
-WHERE sessions.id = ?1
+  s.id,
+  s.source_id,
+  s.title,
+  s.updated_at,
+  s.started_at,
+  s.ended_at,
+  p.display_name,
+  p.path,
+  s.message_count,
+  COALESCE(
+    (SELECT SUBSTR(m.content_text, 1, 120)
+     FROM messages m
+     WHERE m.session_id = s.id AND m.role = 'user'
+     ORDER BY m.seq_no ASC LIMIT 1),
+    ''
+  )
+FROM sessions s
+JOIN projects p ON p.id = s.project_id
+WHERE s.id = ?1
 "#,
             [id],
             |row| {
@@ -134,6 +142,7 @@ WHERE sessions.id = ?1
                     project_name: row.get(6)?,
                     project_path: row.get(7)?,
                     message_count: row.get(8)?,
+                    preview: row.get(9)?,
                     messages: Vec::new(),
                 })
             },

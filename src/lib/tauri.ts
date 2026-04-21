@@ -9,6 +9,7 @@ type SessionListItemDto = {
   updated_at: string;
   project_name: string;
   message_count: number;
+  preview: string;
 };
 
 type SessionMessageDto = {
@@ -43,6 +44,7 @@ export async function scanSources(): Promise<SessionListItem[]> {
     updatedAt: session.updated_at,
     projectName: session.project_name,
     messageCount: session.message_count,
+    preview: session.preview,
   }));
 }
 
@@ -63,6 +65,7 @@ export async function getSessionDetail(id: string): Promise<SessionDetail | null
     projectName: session.project_name,
     projectPath: session.project_path,
     messageCount: session.message_count,
+    preview: session.preview,
     messages: session.messages.map((message) => ({
       id: message.id,
       role: mapMessageRole(message.role),
