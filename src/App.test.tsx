@@ -37,16 +37,16 @@ describe("App", () => {
     );
 
     expect(screen.getByRole("heading", { name: "OmniTrace" })).toBeInTheDocument();
-    expect(screen.getByText(/Unified local history viewer/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Scan / Refresh" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "↻ Scan" })).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "all" })).toHaveLength(3);
     expect(screen.getByRole("button", { name: "codex" })).toBeInTheDocument();
     expect(await screen.findByText("No sessions found for this filter.")).toBeInTheDocument();
 
     await waitFor(() => {
       expect(scanSourcesMock).toHaveBeenCalledTimes(1);
-      expect(screen.getByText(/Status: Idle/)).toBeInTheDocument();
     });
+
+    expect(screen.getByText(/0 sessions/)).toBeInTheDocument();
 
     expect(
       screen.queryByRole("button", { name: "Codex: project-a" }),

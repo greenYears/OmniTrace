@@ -1,5 +1,5 @@
 import "./styles.css";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 
 import { ThreePaneShell } from "./features/layout/ThreePaneShell";
 import { getSessionDetail, scanSources } from "./lib/tauri";
@@ -18,20 +18,16 @@ function App() {
   const updateFilters = useSessionStore((s) => s.updateFilters);
   const selectSession = useSessionStore((s) => s.selectSession);
   const markScannedNow = useSessionStore((s) => s.markScannedNow);
-  const [status, setStatus] = useState("Ready");
   const hasAutoScanned = useRef(false);
 
   async function handleRefresh() {
     try {
-      setStatus("Scanning...");
       const nextSessions = await scanSources();
       setSessions(nextSessions);
       markScannedNow();
-      setStatus("Idle");
     } catch (error) {
       console.error(error);
       setSessions([]);
-      setStatus("Scan failed");
     }
   }
 
@@ -74,19 +70,19 @@ function App() {
 
   return (
     <main className="app-shell">
-      <header className="app-header">
-        <div>
-          <h1>OmniTrace</h1>
-          <p className="app-subtitle">
-            Unified local history viewer for AI coding TUIs.
-          </p>
-          <p className="app-status">
-            Status: {status}
-            {lastScannedAt ? ` · Last scanned at ${lastScannedAt}` : ""}
-          </p>
+      <header className="app-toolbar">
+        <div className="app-toolbar-left">
+          <div className="app-logo" aria-hidden="true">O</div>
+          <div>
+            <h1>OmniTrace</h1>
+            <span className="app-status">
+              {sessions.length} session{sessions.length !== 1 ? "s" : ""}
+              {lastScannedAt ? ` · Last scanned ${lastScannedAt}` : ""}
+            </span>
+          </div>
         </div>
         <button className="scan-button" type="button" onClick={() => void handleRefresh()}>
-          Scan / Refresh
+          ↻ Scan
         </button>
       </header>
 
