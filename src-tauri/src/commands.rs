@@ -13,6 +13,7 @@ pub struct SessionListItem {
     pub updated_at: String,
     pub project_name: String,
     pub message_count: i64,
+    pub preview: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -62,15 +63,22 @@ fn list_session_items(conn: &Connection) -> Result<Vec<SessionListItem>, String>
         .prepare(
             r#"
 SELECT
-  sessions.id,
-  sessions.source_id,
-  sessions.title,
-  sessions.updated_at,
-  projects.display_name,
-  sessions.message_count
-FROM sessions
-JOIN projects ON projects.id = sessions.project_id
-ORDER BY sessions.updated_at DESC, sessions.source_id ASC, sessions.external_id ASC
+  s.id,
+  s.source_id,
+  s.title,
+  s.updated_at,
+  p.display_name,
+  s.message_count,
+  COALESCE(
+    (SELECT SUBSTR(m.content_text, 1, 120)
+     FROM messages m
+     WHERE m.session_id = s.id AND m.role = 'user'
+     ORDER BY m.seq_no ASC LIMIT 1),
+    ''
+  )
+FROM sessions s
+JOIN projects p ON p.id = s.project_id
+ORDER BY s.updated_at DESC, s.source_id ASC, s.external_id ASC
 "#,
         )
         .map_err(|e| e.to_string())?;
@@ -84,6 +92,7 @@ ORDER BY sessions.updated_at DESC, sessions.source_id ASC, sessions.external_id 
                 updated_at: row.get(3)?,
                 project_name: row.get(4)?,
                 message_count: row.get(5)?,
+                preview: row.get(6)?,
             })
         })
         .map_err(|e| e.to_string())?;

@@ -18,6 +18,7 @@ describe("SessionList", () => {
             updatedAt: "2026-04-20T12:00:00Z",
             projectName: "project-a",
             messageCount: 3,
+            preview: "",
           },
           {
             id: "2",
@@ -26,6 +27,7 @@ describe("SessionList", () => {
             updatedAt: "2026-04-20T12:01:00Z",
             projectName: "project-b",
             messageCount: 7,
+            preview: "Open this session.",
           },
         ]}
         selectedId="1"

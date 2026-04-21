@@ -9,6 +9,7 @@ export type SessionListItem = {
   updatedAt: string;
   projectName: string;
   messageCount: number;
+  preview: string;
 };
 
 export type SessionMessage = {

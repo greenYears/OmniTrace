@@ -146,7 +146,7 @@ impl SessionAdapter for ClaudeCodeAdapter {
         Ok(NormalizedSession {
             source_id: self.source_id().to_string(),
             external_id: external_id.clone(),
-            title: format!("Claude Code: {project_name}"),
+            title: project_name.clone(),
             started_at,
             ended_at,
             updated_at,

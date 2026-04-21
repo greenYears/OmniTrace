@@ -48,6 +48,9 @@ export function SessionList({ sessions, selectedId, onSelect }: SessionListProps
               <span>{session.projectName}</span>
               <span>{formatTimeAgo(session.updatedAt)}</span>
             </div>
+            {session.preview && (
+              <div className="session-list-item-preview">{session.preview}</div>
+            )}
           </button>
         );
       })}

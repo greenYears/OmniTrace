@@ -98,7 +98,7 @@ impl SessionAdapter for CodexAdapter {
         Ok(NormalizedSession {
             source_id: self.source_id().to_string(),
             external_id: external_id.clone(),
-            title: format!("Codex: {external_id}"),
+            title: external_id.clone(),
             started_at,
             ended_at,
             updated_at,

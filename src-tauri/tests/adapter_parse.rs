@@ -26,7 +26,7 @@ fn parses_claude_code_fixture_session() {
 
     assert_eq!(s.source_id, "claude_code");
     assert_eq!(s.project.display_name, "monorepo");
-    assert_eq!(s.title, "Claude Code: monorepo");
+    assert_eq!(s.title, "monorepo");
     assert_eq!(s.started_at, "2026-04-20T02:13:20.000Z");
     assert_eq!(s.ended_at, "2026-04-20T02:13:33.000Z");
     assert_eq!(s.updated_at, "2026-04-20T02:13:33.000Z");
@@ -51,7 +51,7 @@ fn parses_codex_fixture_session() {
     assert_eq!(s.project.display_name, "Unknown Project");
     assert_eq!(
         s.title,
-        "Codex: 01900000-0000-7000-8000-000000000000"
+        "01900000-0000-7000-8000-000000000000"
     );
     assert_eq!(s.started_at, "2026-04-20T05:13:20Z");
     assert_eq!(s.ended_at, "2026-04-20T05:16:23Z");

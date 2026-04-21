@@ -62,6 +62,7 @@ describe("App", () => {
         updatedAt: "2026-04-20T10:00:00Z",
         projectName: "project-b",
         messageCount: 2,
+        preview: "Open this session.",
       },
     ]);
     getSessionDetailMock.mockResolvedValue({
