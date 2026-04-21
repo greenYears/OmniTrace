@@ -63,6 +63,12 @@ export function SidebarFilters({
   return (
     <aside className="three-pane three-pane-left sidebar-filters" aria-label="Filters">
       <FilterGroup
+        title="Time"
+        options={timeRanges}
+        value={timeRange}
+        onSelect={(value) => onChange({ timeRange: value })}
+      />
+      <FilterGroup
         title="Sources"
         options={sources}
         value={source}
@@ -73,12 +79,6 @@ export function SidebarFilters({
         options={projects}
         value={project}
         onSelect={(value) => onChange({ project: value })}
-      />
-      <FilterGroup
-        title="Time"
-        options={timeRanges}
-        value={timeRange}
-        onSelect={(value) => onChange({ timeRange: value })}
       />
     </aside>
   );

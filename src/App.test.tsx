@@ -22,7 +22,7 @@ describe("App", () => {
       detail: null,
       sourceFilter: "all",
       projectFilter: "all",
-      timeRange: "all",
+      timeRange: "7d",
       lastScannedAt: null,
     });
     scanSourcesMock.mockResolvedValue([]);

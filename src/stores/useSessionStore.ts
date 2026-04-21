@@ -30,7 +30,7 @@ export const useSessionStore = create<SessionStore>((set) => ({
   detail: null,
   sourceFilter: "all",
   projectFilter: "all",
-  timeRange: "all",
+  timeRange: "7d",
   lastScannedAt: null,
   setSessions: (sessions) =>
     set(() => ({
