@@ -39,6 +39,8 @@ describe("SessionDetail", () => {
           projectPath: "/Users/test/workspace/OmniTrace",
           messageCount: 4,
           preview: "请优化详情面板",
+          fileSize: 0,
+          modelId: "",
           messages: [
             {
               id: "message:1",
@@ -107,6 +109,8 @@ describe("SessionDetail", () => {
           projectPath: "/Users/test/workspace/OmniTrace",
           messageCount: 2,
           preview: "hello",
+          fileSize: 0,
+          modelId: "",
           messages: [
             {
               id: "message:1",
@@ -147,6 +151,8 @@ describe("SessionDetail", () => {
           projectPath: "/Users/test/workspace/OmniTrace",
           messageCount: 240,
           preview: "message 239",
+          fileSize: 0,
+          modelId: "",
           messages: Array.from({ length: 240 }, (_, index) => ({
             id: `message:${index}`,
             role: "user" as const,
@@ -177,6 +183,8 @@ describe("SessionDetail", () => {
           projectPath: "/Users/test/workspace/OmniTrace",
           messageCount: 240,
           preview: "message 239",
+          fileSize: 0,
+          modelId: "",
           messages: Array.from({ length: 240 }, (_, index) => ({
             id: `message:${index}`,
             role: "user" as const,
@@ -213,6 +221,8 @@ describe("SessionDetail", () => {
           projectPath: "/Users/test/workspace/OmniTrace",
           messageCount: 2,
           preview: "hello",
+          fileSize: 0,
+          modelId: "",
           messages: [
             {
               id: "message:1",
@@ -262,6 +272,8 @@ describe("SessionDetail", () => {
           projectPath: "/Users/test/workspace/Old",
           messageCount: 1,
           preview: "old",
+          fileSize: 0,
+          modelId: "",
           messages: [
             {
               id: "message:old",
@@ -295,6 +307,8 @@ describe("SessionDetail", () => {
           projectPath: "/Users/test/workspace/New",
           messageCount: 1,
           preview: "new",
+          fileSize: 0,
+          modelId: "",
           messages: [
             {
               id: "message:new",

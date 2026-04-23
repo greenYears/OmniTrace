@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   message_count INTEGER NOT NULL DEFAULT 0,
   summary_hint  TEXT,
   raw_ref       TEXT,
+  file_size     INTEGER NOT NULL DEFAULT 0,
+  model_id      TEXT NOT NULL DEFAULT '',
   FOREIGN KEY(project_id) REFERENCES projects(id),
   UNIQUE(source_id, external_id)
 );

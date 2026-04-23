@@ -31,6 +31,57 @@ pub fn parse_detail_messages(source_id: &str, path: &Path) -> Result<Vec<DetailM
     }
 }
 
+pub fn extract_model_id(source_id: &str, path: &Path) -> String {
+    match source_id {
+        "claude_code" => extract_claude_model_id(path),
+        "codex" => extract_codex_model_id(path),
+        _ => String::new(),
+    }
+}
+
+fn extract_claude_model_id(path: &Path) -> String {
+    let Ok(lines) = read_jsonl_values(path) else {
+        return String::new();
+    };
+
+    for value in &lines {
+        if value.get("type").and_then(|v| v.as_str()) != Some("assistant") {
+            continue;
+        }
+        if let Some(model) = value
+            .get("message")
+            .and_then(|m| m.get("model"))
+            .and_then(|m| m.as_str())
+        {
+            if !model.is_empty() {
+                return model.to_string();
+            }
+        }
+    }
+
+    String::new()
+}
+
+fn extract_codex_model_id(path: &Path) -> String {
+    let Ok(lines) = read_jsonl_values(path) else {
+        return String::new();
+    };
+
+    for value in &lines {
+        let payload = match value.get("payload") {
+            Some(p) => p,
+            None => continue,
+        };
+        if let Some(model) = payload.get("model").and_then(|m| m.as_str()) {
+            if !model.is_empty() {
+                return model.to_string();
+            }
+        }
+    }
+
+    String::new()
+}
+
 fn parse_codex_detail_messages(path: &Path) -> Result<Vec<DetailMessageRecord>> {
     let lines = read_jsonl_values(path)?;
     let mut messages = Vec::new();

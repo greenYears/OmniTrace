@@ -36,6 +36,8 @@ describe("SessionList", () => {
             projectName: "project-a",
             messageCount: 3,
             preview: "",
+            fileSize: 0,
+            modelId: "",
           },
           {
             id: "2",
@@ -45,10 +47,13 @@ describe("SessionList", () => {
             projectName: "project-b",
             messageCount: 7,
             preview: "Open this session.",
+            fileSize: 0,
+            modelId: "",
           },
         ]}
         selectedId="1"
         onSelect={onSelect}
+        onDelete={vi.fn()}
       />,
     );
 
@@ -79,10 +84,13 @@ describe("SessionList", () => {
             projectName: "OmniTrace",
             messageCount: 3,
             preview: "请优化一下下面的布局和排版。",
+            fileSize: 0,
+            modelId: "",
           },
         ]}
         selectedId="1"
         onSelect={vi.fn()}
+        onDelete={vi.fn()}
       />,
     );
 
@@ -101,10 +109,13 @@ describe("SessionList", () => {
             projectName: "OmniTrace",
             messageCount: 3,
             preview: "请优化一下下面的布局和排版。",
+            fileSize: 0,
+            modelId: "",
           },
         ]}
         selectedId="1"
         onSelect={vi.fn()}
+        onDelete={vi.fn()}
       />,
     );
 
@@ -115,6 +126,63 @@ describe("SessionList", () => {
     expect(styles.boxSizing).toBe("border-box");
     expect(styles.marginTop).toBe("0px");
     expect(styles.marginBottom).toBe("0px");
+  });
+
+  it("renders the selectable session shell as a non-native button so action buttons stay valid", () => {
+    render(
+      <SessionList
+        sessions={[
+          {
+            id: "1",
+            sourceId: "claude_code",
+            title: "Claude Code: OmniTrace",
+            updatedAt: "2026-04-21T05:58:49.485Z",
+            projectName: "OmniTrace",
+            messageCount: 3,
+            preview: "请优化一下下面的布局和排版。",
+            fileSize: 0,
+            modelId: "",
+          },
+        ]}
+        selectedId="1"
+        onSelect={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+
+    const card = screen.getByRole("button", { name: "Claude Code: OmniTrace" });
+
+    expect(card.tagName).toBe("DIV");
+    expect(card).toHaveAttribute("tabindex", "0");
+  });
+
+  it("prevents session rows from shrinking into stripes in the vertical flex list", () => {
+    render(
+      <SessionList
+        sessions={[
+          {
+            id: "1",
+            sourceId: "claude_code",
+            title: "Claude Code: OmniTrace",
+            updatedAt: "2026-04-21T05:58:49.485Z",
+            projectName: "OmniTrace",
+            messageCount: 3,
+            preview: "请优化一下下面的布局和排版。",
+            fileSize: 0,
+            modelId: "",
+          },
+        ]}
+        selectedId="1"
+        onSelect={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+
+    const card = screen.getByRole("button", { name: "Claude Code: OmniTrace" });
+    const row = card.closest(".session-list-item-wrap");
+
+    expect(row).not.toBeNull();
+    expect(getComputedStyle(row as HTMLElement).flexShrink).toBe("0");
   });
 
   it("marks the newly selected session as activating for transition handoff", () => {
@@ -129,6 +197,8 @@ describe("SessionList", () => {
             projectName: "project-a",
             messageCount: 3,
             preview: "",
+            fileSize: 0,
+            modelId: "",
           },
           {
             id: "2",
@@ -138,10 +208,13 @@ describe("SessionList", () => {
             projectName: "project-b",
             messageCount: 7,
             preview: "Open this session.",
+            fileSize: 0,
+            modelId: "",
           },
         ]}
         selectedId="1"
         onSelect={vi.fn()}
+        onDelete={vi.fn()}
       />,
     );
 
@@ -156,6 +229,8 @@ describe("SessionList", () => {
             projectName: "project-a",
             messageCount: 3,
             preview: "",
+            fileSize: 0,
+            modelId: "",
           },
           {
             id: "2",
@@ -165,10 +240,13 @@ describe("SessionList", () => {
             projectName: "project-b",
             messageCount: 7,
             preview: "Open this session.",
+            fileSize: 0,
+            modelId: "",
           },
         ]}
         selectedId="2"
         onSelect={vi.fn()}
+        onDelete={vi.fn()}
       />,
     );
 
@@ -190,10 +268,13 @@ describe("SessionList", () => {
             projectName: "project-b",
             messageCount: 7,
             preview: "Open this session.",
+            fileSize: 0,
+            modelId: "",
           },
         ]}
         selectedId={null}
         onSelect={onSelect}
+        onDelete={vi.fn()}
       />,
     );
 
@@ -214,6 +295,8 @@ describe("SessionList", () => {
       projectName: "project-b",
       messageCount: 7,
       preview: "Open this session.",
+      fileSize: 0,
+      modelId: "",
     })).toBe("codex resume 4c6f0f37-275c-4c3b-b190-a76e69f40e8c");
 
     expect(getResumeCommand({
@@ -225,6 +308,8 @@ describe("SessionList", () => {
       projectName: "project-a",
       messageCount: 3,
       preview: "",
+      fileSize: 0,
+      modelId: "",
     })).toBe("claude --resume 4c6f0f37-275c-4c3b-b190-a76e69f40e8c");
   });
 });

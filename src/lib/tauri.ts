@@ -11,6 +11,8 @@ type SessionListItemDto = {
   project_name: string;
   message_count: number;
   preview: string;
+  file_size: number;
+  model_id: string;
 };
 
 type SessionMessageDto = {
@@ -63,6 +65,8 @@ export async function scanSources(): Promise<SessionListItem[]> {
     projectName: session.project_name,
     messageCount: session.message_count,
     preview: session.preview,
+    fileSize: session.file_size,
+    modelId: session.model_id,
   }));
 }
 
@@ -85,6 +89,8 @@ export async function getSessionDetail(id: string): Promise<SessionDetail | null
     projectPath: session.project_path,
     messageCount: session.message_count,
     preview: session.preview,
+    fileSize: session.file_size,
+    modelId: session.model_id,
     messages: session.messages.map((message) => ({
       id: message.id,
       role: mapMessageRole(message.role),
@@ -95,4 +101,8 @@ export async function getSessionDetail(id: string): Promise<SessionDetail | null
       filePaths: message.file_paths ?? [],
     })),
   };
+}
+
+export async function deleteSession(id: string): Promise<void> {
+  await invoke("delete_session", { id });
 }

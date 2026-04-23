@@ -22,6 +22,7 @@ type ThreePaneShellProps = {
     timeRange?: TimeRange;
   }) => void;
   onSelect: (id: string) => void;
+  onDelete: (id: string) => void;
 };
 
 type PendingSessionMeta = {
@@ -40,6 +41,7 @@ export function ThreePaneShell({
   timeRange,
   onFilterChange,
   onSelect,
+  onDelete,
 }: ThreePaneShellProps) {
   const now = Date.now();
   const filteredSessions = sessions.filter((session) => {
@@ -108,6 +110,7 @@ export function ThreePaneShell({
               sessions={filteredSessions}
               selectedId={selectedId}
               onSelect={onSelect}
+              onDelete={onDelete}
             />
           </section>
 

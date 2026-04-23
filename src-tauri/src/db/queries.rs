@@ -20,9 +20,11 @@ INSERT INTO sessions (
   updated_at,
   message_count,
   summary_hint,
-  raw_ref
+  raw_ref,
+  file_size,
+  model_id
 )
-VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
 ON CONFLICT(source_id, external_id) DO UPDATE SET
   project_id = excluded.project_id,
   title = excluded.title,
@@ -31,7 +33,9 @@ ON CONFLICT(source_id, external_id) DO UPDATE SET
   updated_at = excluded.updated_at,
   message_count = excluded.message_count,
   summary_hint = excluded.summary_hint,
-  raw_ref = excluded.raw_ref
+  raw_ref = excluded.raw_ref,
+  file_size = excluded.file_size,
+  model_id = excluded.model_id
 "#
 }
 

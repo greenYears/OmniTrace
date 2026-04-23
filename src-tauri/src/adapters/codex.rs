@@ -1,4 +1,4 @@
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
@@ -82,6 +82,7 @@ impl SessionAdapter for CodexAdapter {
     }
 
     fn parse_session(&self, path: &Path) -> Result<NormalizedSession> {
+        let file_size = fs::metadata(path).map(|m| m.len()).unwrap_or(0);
         let f = File::open(path).with_context(|| format!("open session: {}", path.display()))?;
         let reader = BufReader::new(f);
 
@@ -237,6 +238,8 @@ impl SessionAdapter for CodexAdapter {
             },
             messages,
             raw_ref: path.display().to_string(),
+            file_size,
+            model_id: String::new(),
         })
     }
 }

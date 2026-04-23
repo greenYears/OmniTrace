@@ -80,7 +80,9 @@ pub fn upsert_sessions(conn: &Connection, sessions: &[NormalizedSession]) -> Res
                     &s.updated_at,
                     message_count,
                     Option::<&str>::None,
-                    &s.raw_ref
+                    &s.raw_ref,
+                    s.file_size as i64,
+                    &s.model_id
                 ],
             )
             .with_context(|| "upsert session")?;

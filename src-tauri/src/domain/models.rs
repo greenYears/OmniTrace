@@ -26,6 +26,8 @@ pub struct NormalizedSession {
     pub project: ProjectRecord,
     pub messages: Vec<MessageRecord>,
     pub raw_ref: String,
+    pub file_size: u64,
+    pub model_id: String,
 }
 
 impl NormalizedSession {
@@ -43,6 +45,8 @@ impl NormalizedSession {
             },
             messages: Vec::new(),
             raw_ref: String::new(),
+            file_size: 0,
+            model_id: String::new(),
         }
     }
 }

@@ -77,6 +77,8 @@ describe("App", () => {
         projectName: "project-b",
         messageCount: 2,
         preview: "Open this session.",
+        fileSize: 0,
+        modelId: "",
       },
     ]);
     getSessionDetailMock.mockResolvedValue({
@@ -90,6 +92,8 @@ describe("App", () => {
       projectPath: "/tmp/project-b",
       messageCount: 2,
       preview: "Open this session.",
+      fileSize: 0,
+      modelId: "",
       messages: [
         {
           id: "message:1",
@@ -124,6 +128,8 @@ describe("App", () => {
         projectName: "project-a",
         messageCount: 2,
         preview: "First session.",
+        fileSize: 0,
+        modelId: "",
       },
       {
         id: "session:codex:bbb",
@@ -133,6 +139,8 @@ describe("App", () => {
         projectName: "project-b",
         messageCount: 2,
         preview: "Second session.",
+        fileSize: 0,
+        modelId: "",
       },
     ]);
 
@@ -149,6 +157,8 @@ describe("App", () => {
           projectPath: "/tmp/project-a",
           messageCount: 1,
           preview: "First session.",
+          fileSize: 0,
+          modelId: "",
           messages: [
             {
               id: "message:a",
@@ -189,6 +199,8 @@ describe("App", () => {
       projectPath: "/tmp/project-b",
       messageCount: 1,
       preview: "Second session.",
+      fileSize: 0,
+      modelId: "",
       messages: [
         {
           id: "message:b",

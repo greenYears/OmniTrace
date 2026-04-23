@@ -2,7 +2,7 @@ import "./styles.css";
 import { startTransition, useEffect, useRef } from "react";
 
 import { ThreePaneShell } from "./features/layout/ThreePaneShell";
-import { getSessionDetail, scanSources } from "./lib/tauri";
+import { deleteSession, getSessionDetail, scanSources } from "./lib/tauri";
 import { useSessionStore } from "./stores/useSessionStore";
 
 function App() {
@@ -30,6 +30,15 @@ function App() {
     } catch (error) {
       console.error(error);
       setSessions([]);
+    }
+  }
+
+  async function handleDelete(id: string) {
+    try {
+      await deleteSession(id);
+      await handleRefresh();
+    } catch (error) {
+      console.error(error);
     }
   }
 
@@ -108,6 +117,7 @@ function App() {
           timeRange={timeRange}
           onFilterChange={updateFilters}
           onSelect={selectSession}
+          onDelete={handleDelete}
         />
       </div>
     </main>

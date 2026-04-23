@@ -11,6 +11,8 @@ export type SessionListItem = {
   projectName: string;
   messageCount: number;
   preview: string;
+  fileSize: number;
+  modelId: string;
 };
 
 export type SessionMessage = {

@@ -23,6 +23,8 @@ pub struct SessionListItem {
     pub project_name: String,
     pub message_count: i64,
     pub preview: String,
+    pub file_size: i64,
+    pub model_id: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -49,6 +51,8 @@ pub struct SessionDetailDto {
     pub project_path: String,
     pub message_count: i64,
     pub preview: String,
+    pub file_size: i64,
+    pub model_id: String,
     pub messages: Vec<SessionMessageDto>,
 }
 
@@ -104,7 +108,9 @@ SELECT
      WHERE m.session_id = s.id AND m.role = 'user'
      ORDER BY m.seq_no ASC LIMIT 1),
     ''
-  )
+  ),
+  s.file_size,
+  s.model_id
 FROM sessions s
 JOIN projects p ON p.id = s.project_id
 ORDER BY s.updated_at DESC, s.source_id ASC, s.external_id ASC
@@ -123,6 +129,8 @@ ORDER BY s.updated_at DESC, s.source_id ASC, s.external_id ASC
                 project_name: row.get(5)?,
                 message_count: row.get(6)?,
                 preview: row.get(7)?,
+                file_size: row.get(8)?,
+                model_id: row.get(9)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -149,6 +157,8 @@ fn load_session_detail(
         message_count: i64,
         preview: String,
         raw_ref: String,
+        file_size: i64,
+        model_id: String,
     }
 
     let session = conn
@@ -172,7 +182,9 @@ SELECT
      WHERE m.session_id = s.id AND m.role = 'user'
      ORDER BY m.seq_no ASC LIMIT 1),
     ''
-  )
+  ),
+  s.file_size,
+  s.model_id
 FROM sessions s
 JOIN projects p ON p.id = s.project_id
 WHERE s.id = ?1
@@ -192,6 +204,8 @@ WHERE s.id = ?1
                     message_count: row.get(9)?,
                     raw_ref: row.get(10)?,
                     preview: row.get(11)?,
+                    file_size: row.get(12)?,
+                    model_id: row.get(13)?,
                 })
             },
         )
@@ -229,6 +243,8 @@ WHERE s.id = ?1
         project_path: session.project_path,
         message_count: session.message_count,
         preview: session.preview,
+        file_size: session.file_size,
+        model_id: session.model_id,
         messages,
     };
 
@@ -298,4 +314,34 @@ pub fn scan_sources() -> Result<Vec<SessionListItem>, String> {
 pub fn get_session_detail(id: String) -> Result<Option<SessionDetailDto>, String> {
     let conn = open_history_database(false)?;
     load_session_detail(&conn, &id)
+}
+
+#[tauri::command]
+pub fn delete_session(id: String) -> Result<(), String> {
+    let conn = open_history_database(false)?;
+
+    let raw_ref: Option<String> = conn
+        .query_row(
+            "SELECT raw_ref FROM sessions WHERE id = ?1",
+            [&id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+
+    if let Some(ref path) = raw_ref {
+        if !path.is_empty() && std::path::Path::new(path).exists() {
+            std::fs::remove_file(path).map_err(|e| format!("delete file: {e}"))?;
+        }
+    }
+
+    conn.execute("DELETE FROM messages WHERE session_id = ?1", [&id])
+        .map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM sessions WHERE id = ?1", [&id])
+        .map_err(|e| e.to_string())?;
+
+    let mut cache = SCAN_CACHE.lock().map_err(|_| "scan cache poisoned".to_string())?;
+    *cache = None;
+
+    Ok(())
 }

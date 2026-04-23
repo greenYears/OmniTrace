@@ -1,4 +1,4 @@
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
@@ -84,6 +84,7 @@ impl SessionAdapter for ClaudeCodeAdapter {
     }
 
     fn parse_session(&self, path: &Path) -> Result<NormalizedSession> {
+        let file_size = fs::metadata(path).map(|m| m.len()).unwrap_or(0);
         let f = File::open(path).with_context(|| format!("open session: {}", path.display()))?;
         let reader = BufReader::new(f);
 
@@ -92,6 +93,7 @@ impl SessionAdapter for ClaudeCodeAdapter {
         let mut project_name: Option<String> = None;
         let mut started_at: Option<String> = None;
         let mut ended_at: Option<String> = None;
+        let model_id: Option<String> = None;
         let mut messages = Vec::new();
         let mut seq_no = 0_i64;
 
@@ -156,6 +158,8 @@ impl SessionAdapter for ClaudeCodeAdapter {
             },
             messages,
             raw_ref: path.display().to_string(),
+            file_size,
+            model_id: model_id.unwrap_or_default(),
         })
     }
 }

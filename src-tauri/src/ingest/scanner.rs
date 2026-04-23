@@ -11,6 +11,7 @@ use serde_json::Value;
 use crate::adapters::claude_code::ClaudeCodeAdapter;
 use crate::adapters::codex::CodexAdapter;
 use crate::adapters::{discover_jsonl_sessions, SessionAdapter};
+use crate::domain::detail::extract_model_id;
 use crate::domain::models::{MessageRecord, NormalizedSession, ProjectRecord};
 
 #[derive(Debug, Clone)]
@@ -112,9 +113,12 @@ fn scan_adapter_sessions<A: SessionAdapter>(adapter: &A) -> Result<Vec<Normalize
         .discover_sessions()
         .with_context(|| format!("discover {} sessions", adapter.source_id()))?;
     for path in paths {
-        let session = adapter
+        let mut session = adapter
             .parse_session(&path)
             .with_context(|| format!("parse {} session: {}", adapter.source_id(), path.display()))?;
+        if session.model_id.is_empty() && !session.raw_ref.is_empty() {
+            session.model_id = extract_model_id(adapter.source_id(), Path::new(&session.raw_ref));
+        }
         sessions.push(session);
     }
 
@@ -315,31 +319,85 @@ fn claude_message_text(entry: &ClaudeHistoryEntry) -> String {
 }
 
 fn scan_real_claude_sources(root: &Path) -> Result<Vec<NormalizedSession>> {
-    let history = root.join("history.jsonl");
-    if !history.exists() {
-        return Ok(Vec::new());
-    }
-
-    let entries: Vec<ClaudeHistoryEntry> = read_jsonl(&history)?;
-    let meta_by_session = read_claude_session_meta(root)?;
-    let raw_by_session = read_claude_project_sessions(root)?;
+    let meta_by_session = read_claude_session_meta(root).unwrap_or_default();
+    let raw_by_session = read_claude_project_sessions(root).unwrap_or_default();
 
     let mut grouped: HashMap<String, ClaudeAccumulator> = HashMap::new();
-    for entry in entries {
-        let acc = grouped.entry(entry.session_id.clone()).or_default();
-        acc.started_at_ms = Some(match acc.started_at_ms {
-            Some(current) => current.min(entry.timestamp),
-            None => entry.timestamp,
-        });
-        acc.ended_at_ms = Some(match acc.ended_at_ms {
-            Some(current) => current.max(entry.timestamp),
-            None => entry.timestamp,
-        });
-        if acc.project_path.is_none() {
-            acc.project_path = entry.project.clone();
+
+    // Collect entries from history.jsonl (may be empty or only current session)
+    let history = root.join("history.jsonl");
+    if history.exists() {
+        let entries: Vec<ClaudeHistoryEntry> = read_jsonl(&history)?;
+        for entry in entries {
+            let acc = grouped.entry(entry.session_id.clone()).or_default();
+            acc.started_at_ms = Some(match acc.started_at_ms {
+                Some(current) => current.min(entry.timestamp),
+                None => entry.timestamp,
+            });
+            acc.ended_at_ms = Some(match acc.ended_at_ms {
+                Some(current) => current.max(entry.timestamp),
+                None => entry.timestamp,
+            });
+            if acc.project_path.is_none() {
+                acc.project_path = entry.project.clone();
+            }
+            acc.messages
+                .push((entry.timestamp, claude_message_text(&entry)));
         }
-        acc.messages
-            .push((entry.timestamp, claude_message_text(&entry)));
+    }
+
+    // Parse project session JSONL files not already discovered from history
+    for (session_id, path_meta) in &raw_by_session {
+        if grouped.contains_key(session_id) {
+            continue;
+        }
+        let Some(raw_path) = &path_meta.path else {
+            continue;
+        };
+        let file = match File::open(raw_path) {
+            Ok(f) => f,
+            Err(_) => continue,
+        };
+        let reader = BufReader::new(file);
+        let mut min_ts: Option<i64> = None;
+        let mut max_ts: Option<i64> = None;
+        let mut cwd: Option<String> = None;
+        let mut first_user_text: Option<String> = None;
+
+        for line in reader.lines() {
+            let Ok(line) = line else { break };
+            let Ok(value) = serde_json::from_str::<Value>(&line) else { continue };
+            let ts = value.get("timestamp").and_then(|v| v.as_str());
+            if let Some(ts_str) = ts {
+                if let Ok(dt) = ts_str.parse::<DateTime<Utc>>() {
+                    let ms = dt.timestamp_millis();
+                    min_ts = Some(min_ts.map_or(ms, |c| c.min(ms)));
+                    max_ts = Some(max_ts.map_or(ms, |c| c.max(ms)));
+                }
+            }
+            if cwd.is_none() {
+                cwd = value.get("cwd").and_then(|v| v.as_str()).map(|s| s.to_string());
+            }
+            if first_user_text.is_none() && value.get("type").and_then(|v| v.as_str()) == Some("user") {
+                first_user_text = value
+                    .get("message")
+                    .and_then(|m| m.get("content"))
+                    .and_then(|c| c.as_str())
+                    .map(|s| s.to_string());
+            }
+        }
+
+        let Some(started_ms) = min_ts else { continue };
+        let ended_ms = max_ts.unwrap_or(started_ms);
+        let acc = grouped.entry(session_id.clone()).or_default();
+        acc.started_at_ms = Some(started_ms);
+        acc.ended_at_ms = Some(ended_ms);
+        if acc.project_path.is_none() {
+            acc.project_path = cwd.or_else(|| path_meta.project_path.clone());
+        }
+        if let Some(text) = first_user_text {
+            acc.messages.push((started_ms, text));
+        }
     }
 
     let mut sessions = Vec::new();
@@ -354,28 +412,36 @@ fn scan_real_claude_sources(root: &Path) -> Result<Vec<NormalizedSession>> {
             .unwrap_or_else(|| "Unknown Project".to_string());
         let project_name = project_display_name(&project_path);
 
-        let started_at_ms = meta
+        let started_at_ms = match meta
             .and_then(|value| value.started_at)
             .or(acc.started_at_ms)
-            .context("claude session missing started_at")?;
+        {
+            Some(ms) => ms,
+            None => continue,
+        };
         let ended_at_ms = acc.ended_at_ms.unwrap_or(started_at_ms);
-        let started_at = rfc3339_millis(started_at_ms)?;
-        let ended_at = rfc3339_millis(ended_at_ms)?;
+        let Ok(started_at) = rfc3339_millis(started_at_ms) else { continue };
+        let Ok(ended_at) = rfc3339_millis(ended_at_ms) else { continue };
 
-        let messages = acc
+        let messages: Vec<_> = acc
             .messages
             .into_iter()
             .enumerate()
-            .map(|(seq_no, (timestamp, content_text))| {
-                Ok(MessageRecord {
+            .filter_map(|(seq_no, (timestamp, content_text))| {
+                let created_at = rfc3339_millis(timestamp).ok()?;
+                Some(MessageRecord {
                     role: "user".to_string(),
                     content_text,
-                    created_at: rfc3339_millis(timestamp)?,
+                    created_at,
                     seq_no: seq_no as i64,
                     metadata_json: "{}".to_string(),
                 })
             })
-            .collect::<Result<Vec<_>>>()?;
+            .collect();
+
+        let raw_ref = raw
+            .and_then(|value| value.path.clone())
+            .unwrap_or_else(|| history.display().to_string());
 
         sessions.push(NormalizedSession {
             source_id: "claude_code".to_string(),
@@ -389,9 +455,14 @@ fn scan_real_claude_sources(root: &Path) -> Result<Vec<NormalizedSession>> {
                 display_name: project_name,
             },
             messages,
-            raw_ref: raw
-                .and_then(|value| value.path.clone())
-                .unwrap_or_else(|| history.display().to_string()),
+            raw_ref: raw_ref.clone(),
+            file_size: std::fs::metadata(Path::new(&raw_ref))
+                .map(|m| m.len())
+                .unwrap_or(0),
+            model_id: raw
+                .and_then(|value| value.path.as_ref())
+                .map(|p| extract_model_id("claude_code", Path::new(p)))
+                .unwrap_or_default(),
         });
     }
 
@@ -479,6 +550,16 @@ fn scan_real_codex_sources(root: &Path) -> Result<Vec<NormalizedSession>> {
                 .get(&session_id)
                 .and_then(|meta| meta.path.clone())
                 .unwrap_or_else(|| history.display().to_string()),
+            file_size: meta_by_session
+                .get(&session_id)
+                .and_then(|meta| meta.path.as_ref())
+                .map(|p| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0))
+                .unwrap_or(0),
+            model_id: meta_by_session
+                .get(&session_id)
+                .and_then(|meta| meta.path.as_ref())
+                .map(|p| extract_model_id("codex", Path::new(p)))
+                .unwrap_or_default(),
         });
     }
 
