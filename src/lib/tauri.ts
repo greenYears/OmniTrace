@@ -4,6 +4,7 @@ import type { SessionDetail, SessionListItem, SessionMessage } from "../types/se
 
 type SessionListItemDto = {
   id: string;
+  resume_id: string;
   source_id: string;
   title: string;
   updated_at: string;
@@ -55,6 +56,7 @@ export async function scanSources(): Promise<SessionListItem[]> {
 
   return sessions.map((session) => ({
     id: session.id,
+    resumeId: session.resume_id,
     sourceId: session.source_id,
     title: session.title,
     updatedAt: session.updated_at,
@@ -73,6 +75,7 @@ export async function getSessionDetail(id: string): Promise<SessionDetail | null
 
   return {
     id: session.id,
+    resumeId: session.resume_id,
     sourceId: session.source_id,
     title: session.title,
     updatedAt: session.updated_at,

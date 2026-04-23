@@ -16,6 +16,7 @@ static SCAN_CACHE: LazyLock<Mutex<Option<ScanResult>>> = LazyLock::new(|| Mutex:
 #[derive(Debug, Clone, Serialize)]
 pub struct SessionListItem {
     pub id: String,
+    pub resume_id: String,
     pub source_id: String,
     pub title: String,
     pub updated_at: String,
@@ -38,6 +39,7 @@ pub struct SessionMessageDto {
 #[derive(Debug, Clone, Serialize)]
 pub struct SessionDetailDto {
     pub id: String,
+    pub resume_id: String,
     pub source_id: String,
     pub title: String,
     pub updated_at: String,
@@ -90,6 +92,7 @@ fn list_session_items(conn: &Connection) -> Result<Vec<SessionListItem>, String>
             r#"
 SELECT
   s.id,
+  s.external_id,
   s.source_id,
   s.title,
   s.updated_at,
@@ -113,12 +116,13 @@ ORDER BY s.updated_at DESC, s.source_id ASC, s.external_id ASC
         .query_map([], |row| {
             Ok(SessionListItem {
                 id: row.get(0)?,
-                source_id: row.get(1)?,
-                title: row.get(2)?,
-                updated_at: row.get(3)?,
-                project_name: row.get(4)?,
-                message_count: row.get(5)?,
-                preview: row.get(6)?,
+                resume_id: row.get(1)?,
+                source_id: row.get(2)?,
+                title: row.get(3)?,
+                updated_at: row.get(4)?,
+                project_name: row.get(5)?,
+                message_count: row.get(6)?,
+                preview: row.get(7)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -134,6 +138,7 @@ fn load_session_detail(
     #[derive(Debug, Clone)]
     struct SessionRow {
         id: String,
+        resume_id: String,
         source_id: String,
         title: String,
         updated_at: String,
@@ -151,6 +156,7 @@ fn load_session_detail(
             r#"
 SELECT
   s.id,
+  s.external_id,
   s.source_id,
   s.title,
   s.updated_at,
@@ -175,16 +181,17 @@ WHERE s.id = ?1
             |row| {
                 Ok(SessionRow {
                     id: row.get(0)?,
-                    source_id: row.get(1)?,
-                    title: row.get(2)?,
-                    updated_at: row.get(3)?,
-                    started_at: row.get(4)?,
-                    ended_at: row.get(5)?,
-                    project_name: row.get(6)?,
-                    project_path: row.get(7)?,
-                    message_count: row.get(8)?,
-                    raw_ref: row.get(9)?,
-                    preview: row.get(10)?,
+                    resume_id: row.get(1)?,
+                    source_id: row.get(2)?,
+                    title: row.get(3)?,
+                    updated_at: row.get(4)?,
+                    started_at: row.get(5)?,
+                    ended_at: row.get(6)?,
+                    project_name: row.get(7)?,
+                    project_path: row.get(8)?,
+                    message_count: row.get(9)?,
+                    raw_ref: row.get(10)?,
+                    preview: row.get(11)?,
                 })
             },
         )
@@ -212,6 +219,7 @@ WHERE s.id = ?1
 
     let detail = SessionDetailDto {
         id: session.id,
+        resume_id: session.resume_id,
         source_id: session.source_id,
         title: session.title,
         updated_at: session.updated_at,

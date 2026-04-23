@@ -205,10 +205,15 @@ body {
   overflow: auto;
 }
 
+.session-list-item-wrap {
+  position: relative;
+}
+
 .session-list-item {
   border: 1px solid #e5e5e7;
   border-radius: 4px;
-  padding: 12px 14px;
+  padding: 12px 92px 12px 14px;
+  width: 100%;
   background: #fff;
   color: inherit;
   text-align: left;
@@ -241,11 +246,18 @@ body {
   animation: session-source-chip-pulse 260ms ease;
 }
 
+.session-list-item-actions {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .session-list-item-top {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
 }
 
 .session-list-item-title {
@@ -268,6 +280,37 @@ body {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+}
+
+.session-list-copy-button {
+  border: 1px solid rgba(209, 213, 219, 0.9);
+  border-radius: 999px;
+  padding: 2px 8px;
+  background: rgba(255, 255, 255, 0.95);
+  color: #6b7280;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.6;
+  cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    transform 140ms ease;
+}
+
+.session-list-copy-button:hover {
+  border-color: rgba(0, 122, 255, 0.35);
+  background: rgba(0, 122, 255, 0.06);
+  color: #007aff;
+  transform: translateY(-1px);
+}
+
+.session-list-copy-button.is-copied {
+  border-color: rgba(16, 163, 127, 0.28);
+  background: rgba(16, 163, 127, 0.12);
+  color: #0f766e;
 }
 
 .session-list-source-icon {

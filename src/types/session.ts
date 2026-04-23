@@ -4,6 +4,7 @@ export type SourceFilter = "all" | "claude_code" | "codex";
 
 export type SessionListItem = {
   id: string;
+  resumeId?: string;
   sourceId: string;
   title: string;
   updatedAt: string;

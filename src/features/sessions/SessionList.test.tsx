@@ -1,10 +1,26 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { SessionList } from "./SessionList";
+import { SessionList, getResumeCommand } from "./SessionList";
 
 describe("SessionList", () => {
+  const writeTextMock = vi.fn();
+
+  beforeEach(() => {
+    writeTextMock.mockReset();
+    Object.defineProperty(globalThis.navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: writeTextMock,
+      },
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('renders two sessions and calls onSelect("2") after clicking Codex: project-b', async () => {
     const onSelect = vi.fn();
 
@@ -128,5 +144,58 @@ describe("SessionList", () => {
     );
 
     expect(screen.getByRole("button", { name: "Codex: project-b" })).toHaveClass("is-activating");
+  });
+
+  it("copies the codex resume command without selecting the session", async () => {
+    const onSelect = vi.fn();
+
+    render(
+      <SessionList
+        sessions={[
+          {
+            id: "session:codex:resume-1",
+            resumeId: "resume-1",
+            sourceId: "codex",
+            title: "Codex: project-b",
+            updatedAt: "2026-04-20T12:01:00Z",
+            projectName: "project-b",
+            messageCount: 7,
+            preview: "Open this session.",
+          },
+        ]}
+        selectedId={null}
+        onSelect={onSelect}
+      />,
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "复制 project-b 的 Resume 命令" }));
+
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "已复制 project-b 的 Resume 命令" })).toBeInTheDocument();
+  });
+
+  it("builds the correct resume commands for codex and claude", () => {
+    expect(getResumeCommand({
+      id: "session:codex:resume-1",
+      resumeId: "4c6f0f37-275c-4c3b-b190-a76e69f40e8c",
+      sourceId: "codex",
+      title: "Codex: project-b",
+      updatedAt: "2026-04-20T12:01:00Z",
+      projectName: "project-b",
+      messageCount: 7,
+      preview: "Open this session.",
+    })).toBe("codex --resume 4c6f0f37-275c-4c3b-b190-a76e69f40e8c");
+
+    expect(getResumeCommand({
+      id: "session:claude_code:resume-2",
+      resumeId: "4c6f0f37-275c-4c3b-b190-a76e69f40e8c",
+      sourceId: "claude_code",
+      title: "Claude Code: project-a",
+      updatedAt: "2026-04-20T12:00:00Z",
+      projectName: "project-a",
+      messageCount: 3,
+      preview: "",
+    })).toBe("claude --resume 4c6f0f37-275c-4c3b-b190-a76e69f40e8c");
   });
 });
