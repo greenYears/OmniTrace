@@ -35,7 +35,7 @@ export function getResumeCommand(session: SessionListItem) {
   const resumeId = session.resumeId ?? session.id;
 
   if (session.sourceId === "codex") {
-    return `codex --resume ${resumeId}`;
+    return `codex resume ${resumeId}`;
   }
 
   return `claude --resume ${resumeId}`;

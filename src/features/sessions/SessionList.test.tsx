@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import "../../styles.css";
 import { SessionList, getResumeCommand } from "./SessionList";
 
 describe("SessionList", () => {
@@ -86,6 +87,34 @@ describe("SessionList", () => {
     );
 
     expect(screen.getAllByText("OmniTrace")).toHaveLength(1);
+  });
+
+  it("renders session cards as block-level buttons to avoid extra inter-card gaps", () => {
+    render(
+      <SessionList
+        sessions={[
+          {
+            id: "1",
+            sourceId: "claude_code",
+            title: "Claude Code: OmniTrace",
+            updatedAt: "2026-04-21T05:58:49.485Z",
+            projectName: "OmniTrace",
+            messageCount: 3,
+            preview: "请优化一下下面的布局和排版。",
+          },
+        ]}
+        selectedId="1"
+        onSelect={vi.fn()}
+      />,
+    );
+
+    const card = screen.getByRole("button", { name: "Claude Code: OmniTrace" });
+    const styles = getComputedStyle(card);
+
+    expect(styles.display).toBe("block");
+    expect(styles.boxSizing).toBe("border-box");
+    expect(styles.marginTop).toBe("0px");
+    expect(styles.marginBottom).toBe("0px");
   });
 
   it("marks the newly selected session as activating for transition handoff", () => {
@@ -185,7 +214,7 @@ describe("SessionList", () => {
       projectName: "project-b",
       messageCount: 7,
       preview: "Open this session.",
-    })).toBe("codex --resume 4c6f0f37-275c-4c3b-b190-a76e69f40e8c");
+    })).toBe("codex resume 4c6f0f37-275c-4c3b-b190-a76e69f40e8c");
 
     expect(getResumeCommand({
       id: "session:claude_code:resume-2",
