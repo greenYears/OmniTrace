@@ -64,9 +64,11 @@ fn scan_and_upsert_fixture_sessions_end_to_end() {
 fn scan_and_upsert_real_history_layout_end_to_end() {
     let home = temp_path("real-history");
     let claude_sessions = home.join(".claude/sessions");
+    let claude_projects = home.join(".claude/projects/-Users-test-workspace-alpha");
     let codex_root = home.join(".codex");
     let codex_sessions = codex_root.join("sessions/2026/04/20");
     fs::create_dir_all(&claude_sessions).expect("claude sessions dir should be created");
+    fs::create_dir_all(&claude_projects).expect("claude projects dir should be created");
     fs::create_dir_all(&codex_root).expect("codex dir should be created");
     fs::create_dir_all(&codex_sessions).expect("codex nested sessions dir should be created");
 
@@ -83,6 +85,30 @@ fn scan_and_upsert_real_history_layout_end_to_end() {
         "{\"pid\":123,\"sessionId\":\"claude-1\",\"cwd\":\"/Users/test/workspace/alpha\",\"startedAt\":1776651199000,\"version\":\"2.1.114\",\"kind\":\"interactive\",\"entrypoint\":\"cli\"}\n",
     )
     .expect("claude session metadata should be written");
+    fs::write(
+        claude_projects.join("sessions-index.json"),
+        concat!(
+            "{\n",
+            "  \"version\": 1,\n",
+            "  \"entries\": [\n",
+            "    {\n",
+            "      \"sessionId\": \"claude-1\",\n",
+            "      \"fullPath\": \"/tmp/omnitrace-should-not-be-used.jsonl\",\n",
+            "      \"projectPath\": \"/Users/test/workspace/alpha\"\n",
+            "    }\n",
+            "  ]\n",
+            "}\n"
+        ),
+    )
+    .expect("claude session index should be written");
+    fs::write(
+        claude_projects.join("claude-1.jsonl"),
+        concat!(
+            "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"/help\"}]},\"timestamp\":\"2026-04-19T03:46:40.000Z\",\"sessionId\":\"claude-1\"}\n",
+            "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"已打开。\"}]},\"timestamp\":\"2026-04-19T03:46:42.000Z\",\"sessionId\":\"claude-1\"}\n"
+        ),
+    )
+    .expect("claude project session should be written");
 
     fs::write(
         home.join(".codex/history.jsonl"),
@@ -97,8 +123,9 @@ fn scan_and_upsert_real_history_layout_end_to_end() {
         "{\"id\":\"codex-1\",\"thread_name\":\"Thread A\",\"updated_at\":\"2026-04-20T05:14:21Z\"}\n",
     )
     .expect("codex index should be written");
+    let codex_session_path = codex_sessions.join("rollout-2026-04-20T05-13-20-codex-1.jsonl");
     fs::write(
-        codex_sessions.join("rollout-2026-04-20T05-13-20-codex-1.jsonl"),
+        &codex_session_path,
         concat!(
             "{\"timestamp\":\"2026-04-20T05:13:20Z\",\"type\":\"session_meta\",\"payload\":{\"id\":\"codex-1\",\"cwd\":\"/Users/test/workspace/bravo\"}}\n",
             "{\"timestamp\":\"2026-04-20T05:13:21Z\",\"type\":\"response_item\",\"payload\":{\"role\":\"user\",\"text\":\"one\"}}\n"
@@ -110,10 +137,15 @@ fn scan_and_upsert_real_history_layout_end_to_end() {
 
     assert_eq!(result.sessions.len(), 2);
     assert_eq!(result.sessions[0].source_id, "codex");
-    assert_eq!(result.sessions[0].title, "Thread A");
+    assert_eq!(result.sessions[0].title, "bravo");
     assert_eq!(result.sessions[0].project.display_name, "bravo");
+    assert_eq!(result.sessions[0].raw_ref, codex_session_path.display().to_string());
     assert_eq!(result.sessions[1].source_id, "claude_code");
     assert_eq!(result.sessions[1].project.display_name, "alpha");
+    assert_eq!(
+        result.sessions[1].raw_ref,
+        claude_projects.join("claude-1.jsonl").display().to_string()
+    );
 
     let conn = Connection::open_in_memory().expect("in-memory sqlite connection");
     db::configure_connection(&conn).expect("configure connection should succeed");

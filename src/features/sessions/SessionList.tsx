@@ -1,4 +1,5 @@
 import clsx from "clsx";
+import { useEffect, useRef, useState } from "react";
 
 import type { SessionListItem } from "../../types/session";
 
@@ -29,25 +30,63 @@ function stripTitle(title: string): string {
 }
 
 export function SessionList({ sessions, selectedId, onSelect }: SessionListProps) {
+  const prevSelectedIdRef = useRef<string | null>(selectedId);
+  const activateTimerRef = useRef<number | null>(null);
+  const [activatingId, setActivatingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!selectedId || prevSelectedIdRef.current === selectedId) {
+      prevSelectedIdRef.current = selectedId;
+      return;
+    }
+
+    prevSelectedIdRef.current = selectedId;
+    setActivatingId(selectedId);
+
+    if (activateTimerRef.current) {
+      window.clearTimeout(activateTimerRef.current);
+    }
+
+    activateTimerRef.current = window.setTimeout(() => {
+      setActivatingId((current) => (current === selectedId ? null : current));
+      activateTimerRef.current = null;
+    }, 260);
+  }, [selectedId]);
+
+  useEffect(() => () => {
+    if (activateTimerRef.current) {
+      window.clearTimeout(activateTimerRef.current);
+    }
+  }, []);
+
   return (
     <div className="session-list" aria-label="Sessions">
       {sessions.map((session) => {
         const isSelected = session.id === selectedId;
+        const isActivating = session.id === activatingId;
         const displayTitle = stripTitle(session.title);
         const showProjectName = session.projectName !== displayTitle;
+        const sourceIcon = getSourceIcon(session.sourceId);
 
         return (
           <button
             key={session.id}
             type="button"
-            className={clsx("session-list-item", isSelected && "is-selected")}
+            className={clsx("session-list-item", isSelected && "is-selected", isActivating && "is-activating")}
             aria-label={session.title}
             aria-current={isSelected ? "true" : undefined}
             onClick={() => onSelect(session.id)}
           >
             <div className="session-list-item-top">
               <span className="session-list-item-title">{displayTitle}</span>
-              <span className={clsx("source-icon", getSourceIcon(session.sourceId).cls)} aria-label={session.sourceId}>{getSourceIcon(session.sourceId).text}</span>
+              <span className="session-list-source-chip">
+                <span
+                  className={clsx("source-icon", "session-list-source-icon", sourceIcon.cls)}
+                  aria-label={session.sourceId}
+                >
+                  {sourceIcon.text}
+                </span>
+              </span>
             </div>
             <div className="session-list-item-meta">
               {showProjectName && <span>{session.projectName}</span>}

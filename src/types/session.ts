@@ -14,9 +14,12 @@ export type SessionListItem = {
 
 export type SessionMessage = {
   id: string;
-  role: "user" | "assistant" | "system";
+  role: "user" | "assistant" | "system" | "tool";
+  kind: "message" | "tool_call" | "tool_result" | "file_summary";
   contentText: string;
   createdAt: string;
+  toolName?: string;
+  filePaths: string[];
 };
 
 export type SessionDetail = SessionListItem & {

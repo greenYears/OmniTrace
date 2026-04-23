@@ -12,6 +12,7 @@ type ThreePaneShellProps = {
   sessions: SessionListItem[];
   selectedId: string | null;
   detail: SessionDetail | null;
+  detailLoading: boolean;
   sourceFilter: SourceFilter;
   projectFilter: string;
   timeRange: TimeRange;
@@ -23,10 +24,17 @@ type ThreePaneShellProps = {
   onSelect: (id: string) => void;
 };
 
+type PendingSessionMeta = {
+  title: string;
+  projectName: string;
+  sourceId: string;
+};
+
 export function ThreePaneShell({
   sessions,
   selectedId,
   detail,
+  detailLoading,
   sourceFilter,
   projectFilter,
   timeRange,
@@ -68,6 +76,14 @@ export function ThreePaneShell({
     detail && filteredSessions.some((session) => session.id === detail.id)
       ? detail
       : null;
+  const selectedSession = filteredSessions.find((session) => session.id === selectedId) ?? null;
+  const pendingSession: PendingSessionMeta | null = selectedSession
+    ? {
+        title: selectedSession.title,
+        projectName: selectedSession.projectName,
+        sourceId: selectedSession.sourceId,
+      }
+    : null;
 
   return (
     <div className="three-pane-shell" aria-label="Session viewer">
@@ -96,7 +112,7 @@ export function ThreePaneShell({
           </section>
 
           <section className="three-pane three-pane-right" aria-label="Session detail">
-            <SessionDetailPane detail={selectedDetail} />
+            <SessionDetailPane detail={selectedDetail} isLoading={detailLoading} pendingSession={pendingSession} />
           </section>
         </>
       )}

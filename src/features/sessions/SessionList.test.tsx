@@ -71,4 +71,62 @@ describe("SessionList", () => {
 
     expect(screen.getAllByText("OmniTrace")).toHaveLength(1);
   });
+
+  it("marks the newly selected session as activating for transition handoff", () => {
+    const { rerender } = render(
+      <SessionList
+        sessions={[
+          {
+            id: "1",
+            sourceId: "claude_code",
+            title: "Claude Code: project-a",
+            updatedAt: "2026-04-20T12:00:00Z",
+            projectName: "project-a",
+            messageCount: 3,
+            preview: "",
+          },
+          {
+            id: "2",
+            sourceId: "codex",
+            title: "Codex: project-b",
+            updatedAt: "2026-04-20T12:01:00Z",
+            projectName: "project-b",
+            messageCount: 7,
+            preview: "Open this session.",
+          },
+        ]}
+        selectedId="1"
+        onSelect={vi.fn()}
+      />,
+    );
+
+    rerender(
+      <SessionList
+        sessions={[
+          {
+            id: "1",
+            sourceId: "claude_code",
+            title: "Claude Code: project-a",
+            updatedAt: "2026-04-20T12:00:00Z",
+            projectName: "project-a",
+            messageCount: 3,
+            preview: "",
+          },
+          {
+            id: "2",
+            sourceId: "codex",
+            title: "Codex: project-b",
+            updatedAt: "2026-04-20T12:01:00Z",
+            projectName: "project-b",
+            messageCount: 7,
+            preview: "Open this session.",
+          },
+        ]}
+        selectedId="2"
+        onSelect={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Codex: project-b" })).toHaveClass("is-activating");
+  });
 });

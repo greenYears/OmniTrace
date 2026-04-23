@@ -39,6 +39,21 @@ struct ClaudeSessionMeta {
 }
 
 #[derive(Debug, Deserialize)]
+struct ClaudeProjectSessionsIndex {
+    entries: Vec<ClaudeProjectSessionEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ClaudeProjectSessionEntry {
+    #[serde(rename = "sessionId")]
+    session_id: String,
+    #[serde(rename = "fullPath")]
+    full_path: Option<String>,
+    #[serde(rename = "projectPath")]
+    project_path: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 struct CodexHistoryEntry {
     session_id: String,
     ts: i64,
@@ -56,6 +71,13 @@ struct CodexSessionIndexEntry {
 #[derive(Debug, Default)]
 struct CodexSessionMeta {
     cwd: Option<String>,
+    path: Option<String>,
+}
+
+#[derive(Debug, Default)]
+struct ClaudeSessionPathMeta {
+    path: Option<String>,
+    project_path: Option<String>,
 }
 
 #[derive(Debug, Default)]
@@ -163,6 +185,68 @@ fn read_claude_session_meta(root: &Path) -> Result<HashMap<String, ClaudeSession
     Ok(out)
 }
 
+fn read_claude_project_sessions(root: &Path) -> Result<HashMap<String, ClaudeSessionPathMeta>> {
+    let projects_dir = root.join("projects");
+    if !projects_dir.exists() {
+        return Ok(HashMap::new());
+    }
+
+    let mut out = HashMap::new();
+    for entry in
+        std::fs::read_dir(&projects_dir).with_context(|| format!("read_dir {}", projects_dir.display()))?
+    {
+        let entry = entry.with_context(|| format!("read entry in {}", projects_dir.display()))?;
+        let project_dir = entry.path();
+        if !project_dir.is_dir() {
+            continue;
+        }
+
+        let index_path = project_dir.join("sessions-index.json");
+        if index_path.exists() {
+            let contents = std::fs::read_to_string(&index_path)
+                .with_context(|| format!("read {}", index_path.display()))?;
+            let index: ClaudeProjectSessionsIndex = serde_json::from_str(&contents)
+                .with_context(|| format!("parse {}", index_path.display()))?;
+
+            for session in index.entries {
+                let candidate_path = session
+                    .full_path
+                    .filter(|path| Path::new(path).exists())
+                    .or_else(|| {
+                        let inferred = project_dir.join(format!("{}.jsonl", session.session_id));
+                        inferred.exists().then(|| inferred.display().to_string())
+                    });
+                let entry = out.entry(session.session_id).or_insert_with(ClaudeSessionPathMeta::default);
+                if entry.path.is_none() {
+                    entry.path = candidate_path;
+                }
+                if entry.project_path.is_none() {
+                    entry.project_path = session.project_path;
+                }
+            }
+        }
+
+        for session_path in discover_jsonl_sessions(&project_dir)
+            .with_context(|| format!("discover claude project sessions in {}", project_dir.display()))?
+        {
+            let Some(session_id) = session_path
+                .file_stem()
+                .and_then(|value| value.to_str())
+                .map(|value| value.to_string())
+            else {
+                continue;
+            };
+
+            let entry = out.entry(session_id).or_insert_with(ClaudeSessionPathMeta::default);
+            if entry.path.is_none() {
+                entry.path = Some(session_path.display().to_string());
+            }
+        }
+    }
+
+    Ok(out)
+}
+
 fn read_codex_session_meta(root: &Path) -> Result<HashMap<String, CodexSessionMeta>> {
     let sessions_dir = root.join("sessions");
     if !sessions_dir.exists() {
@@ -197,6 +281,7 @@ fn read_codex_session_meta(root: &Path) -> Result<HashMap<String, CodexSessionMe
                             .get("cwd")
                             .and_then(|v| v.as_str())
                             .map(|v| v.to_string()),
+                        path: Some(path.display().to_string()),
                     });
             }
             break;
@@ -237,6 +322,7 @@ fn scan_real_claude_sources(root: &Path) -> Result<Vec<NormalizedSession>> {
 
     let entries: Vec<ClaudeHistoryEntry> = read_jsonl(&history)?;
     let meta_by_session = read_claude_session_meta(root)?;
+    let raw_by_session = read_claude_project_sessions(root)?;
 
     let mut grouped: HashMap<String, ClaudeAccumulator> = HashMap::new();
     for entry in entries {
@@ -260,8 +346,10 @@ fn scan_real_claude_sources(root: &Path) -> Result<Vec<NormalizedSession>> {
     for (session_id, mut acc) in grouped {
         acc.messages.sort_by_key(|(timestamp, _)| *timestamp);
         let meta = meta_by_session.get(&session_id);
+        let raw = raw_by_session.get(&session_id);
         let project_path = acc
             .project_path
+            .or_else(|| raw.and_then(|value| value.project_path.clone()))
             .or_else(|| meta.and_then(|value| value.cwd.clone()))
             .unwrap_or_else(|| "Unknown Project".to_string());
         let project_name = project_display_name(&project_path);
@@ -301,7 +389,9 @@ fn scan_real_claude_sources(root: &Path) -> Result<Vec<NormalizedSession>> {
                 display_name: project_name,
             },
             messages,
-            raw_ref: history.display().to_string(),
+            raw_ref: raw
+                .and_then(|value| value.path.clone())
+                .unwrap_or_else(|| history.display().to_string()),
         });
     }
 
@@ -385,7 +475,10 @@ fn scan_real_codex_sources(root: &Path) -> Result<Vec<NormalizedSession>> {
                 display_name: project_name,
             },
             messages,
-            raw_ref: history.display().to_string(),
+            raw_ref: meta_by_session
+                .get(&session_id)
+                .and_then(|meta| meta.path.clone())
+                .unwrap_or_else(|| history.display().to_string()),
         });
     }
 
@@ -406,7 +499,14 @@ pub fn scan_fixture_sources(claude_root: PathBuf, codex_root: PathBuf) -> Result
 
 pub fn scan_home_sources(home_root: PathBuf) -> Result<ScanResult> {
     let mut sessions = scan_real_claude_sources(&home_root.join(".claude"))?;
-    sessions.extend(scan_real_codex_sources(&home_root.join(".codex"))?);
+
+    let codex_sessions_dir = home_root.join(".codex/sessions");
+    if codex_sessions_dir.exists() {
+        let codex = CodexAdapter::new(codex_sessions_dir);
+        sessions.extend(scan_adapter_sessions(&codex)?);
+    } else {
+        sessions.extend(scan_real_codex_sources(&home_root.join(".codex"))?);
+    }
 
     Ok(ScanResult {
         sessions: sort_sessions(sessions),

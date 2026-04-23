@@ -1,5 +1,5 @@
 import "./styles.css";
-import { useEffect, useRef } from "react";
+import { startTransition, useEffect, useRef } from "react";
 
 import { ThreePaneShell } from "./features/layout/ThreePaneShell";
 import { getSessionDetail, scanSources } from "./lib/tauri";
@@ -9,12 +9,14 @@ function App() {
   const sessions = useSessionStore((s) => s.sessions);
   const selectedId = useSessionStore((s) => s.selectedId);
   const detail = useSessionStore((s) => s.detail);
+  const detailLoading = useSessionStore((s) => s.detailLoading);
   const sourceFilter = useSessionStore((s) => s.sourceFilter);
   const projectFilter = useSessionStore((s) => s.projectFilter);
   const timeRange = useSessionStore((s) => s.timeRange);
   const lastScannedAt = useSessionStore((s) => s.lastScannedAt);
   const setSessions = useSessionStore((s) => s.setSessions);
   const setDetail = useSessionStore((s) => s.setDetail);
+  const setDetailLoading = useSessionStore((s) => s.setDetailLoading);
   const updateFilters = useSessionStore((s) => s.updateFilters);
   const selectSession = useSessionStore((s) => s.selectSession);
   const markScannedNow = useSessionStore((s) => s.markScannedNow);
@@ -36,28 +38,37 @@ function App() {
 
     if (!selectedId) {
       setDetail(null);
+      setDetailLoading(false);
       return () => {
         cancelled = true;
       };
     }
 
+    setDetailLoading(true);
+
     void getSessionDetail(selectedId)
       .then((value) => {
         if (!cancelled) {
-          setDetail(value);
+          startTransition(() => {
+            setDetail(value);
+            setDetailLoading(false);
+          });
         }
       })
       .catch((error) => {
         console.error(error);
         if (!cancelled) {
-          setDetail(null);
+          startTransition(() => {
+            setDetail(null);
+            setDetailLoading(false);
+          });
         }
       });
 
     return () => {
       cancelled = true;
     };
-  }, [selectedId, sessions, setDetail]);
+  }, [selectedId, setDetail]);
 
   useEffect(() => {
     if (hasAutoScanned.current) {
@@ -91,6 +102,7 @@ function App() {
           sessions={sessions}
           selectedId={selectedId}
           detail={detail}
+          detailLoading={detailLoading}
           sourceFilter={sourceFilter}
           projectFilter={projectFilter}
           timeRange={timeRange}

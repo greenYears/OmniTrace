@@ -15,8 +15,11 @@ type SessionListItemDto = {
 type SessionMessageDto = {
   id: string;
   role: string;
+  kind: string;
   content_text: string;
   created_at: string;
+  tool_name?: string | null;
+  file_paths?: string[];
 };
 
 type SessionDetailDto = SessionListItemDto & {
@@ -27,11 +30,24 @@ type SessionDetailDto = SessionListItemDto & {
 };
 
 function mapMessageRole(role: string): SessionMessage["role"] {
-  if (role === "user" || role === "assistant" || role === "system") {
+  if (role === "user" || role === "assistant" || role === "system" || role === "tool") {
     return role;
   }
 
   return "assistant";
+}
+
+function mapMessageKind(kind: string): SessionMessage["kind"] {
+  if (
+    kind === "message" ||
+    kind === "tool_call" ||
+    kind === "tool_result" ||
+    kind === "file_summary"
+  ) {
+    return kind;
+  }
+
+  return "message";
 }
 
 export async function scanSources(): Promise<SessionListItem[]> {
@@ -69,8 +85,11 @@ export async function getSessionDetail(id: string): Promise<SessionDetail | null
     messages: session.messages.map((message) => ({
       id: message.id,
       role: mapMessageRole(message.role),
+      kind: mapMessageKind(message.kind),
       contentText: message.content_text,
       createdAt: message.created_at,
+      toolName: message.tool_name ?? undefined,
+      filePaths: message.file_paths ?? [],
     })),
   };
 }

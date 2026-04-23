@@ -42,6 +42,34 @@ impl CodexAdapter {
         }
         current.as_str().map(|s| s.to_string())
     }
+
+    fn extract_text(payload: &Value) -> String {
+        if let Some(text) = payload.get("text").and_then(|t| t.as_str()) {
+            if !text.is_empty() {
+                return text.to_string();
+            }
+        }
+
+        let content = match payload.get("content").and_then(|c| c.as_array()) {
+            Some(arr) => arr,
+            None => return String::new(),
+        };
+
+        let parts: Vec<String> = content
+            .iter()
+            .filter_map(|item| {
+                let item_type = item.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                if matches!(item_type, "input_text" | "output_text" | "text") {
+                    item.get("text").and_then(|t| t.as_str()).map(|s| s.to_string())
+                } else {
+                    None
+                }
+            })
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        parts.join("\n\n")
+    }
 }
 
 impl SessionAdapter for CodexAdapter {
@@ -99,33 +127,84 @@ impl SessionAdapter for CodexAdapter {
                     }
                 }
                 "response_item" => {
-                    let role = payload
-                        .get("role")
-                        .and_then(|r| r.as_str())
-                        .unwrap_or("user");
+                    let payload_type = payload.get("type").and_then(|t| t.as_str()).unwrap_or("");
 
-                    if role == "user" || role == "assistant" {
-                        let content_text = payload
-                            .get("text")
-                            .and_then(|t| t.as_str())
-                            .unwrap_or("")
-                            .to_string();
+                    match payload_type {
+                        "message" | "" => {
+                            let role = payload
+                                .get("role")
+                                .and_then(|r| r.as_str())
+                                .unwrap_or("user");
 
-                        let created_at = Self::parse_timestamp(&v, "timestamp").ok();
+                            if role == "user" || role == "assistant" {
+                                let content_text = Self::extract_text(&payload);
+                                if content_text.is_empty() {
+                                    continue;
+                                }
 
-                        if started_at.is_none() {
-                            started_at = created_at.clone();
+                                let created_at = Self::parse_timestamp(&v, "timestamp").ok();
+
+                                if started_at.is_none() {
+                                    started_at = created_at.clone();
+                                }
+                                ended_at = created_at.clone();
+
+                                messages.push(MessageRecord {
+                                    role: role.to_string(),
+                                    content_text,
+                                    created_at: created_at.unwrap_or_default(),
+                                    seq_no,
+                                    metadata_json: "{}".to_string(),
+                                });
+                                seq_no += 1;
+                            }
                         }
-                        ended_at = created_at.clone();
+                        "function_call" | "custom_tool_call" => {
+                            let tool_name = payload
+                                .get("name")
+                                .and_then(|n| n.as_str())
+                                .unwrap_or("tool");
+                            let args = payload
+                                .get("arguments")
+                                .and_then(|a| a.as_str())
+                                .unwrap_or("");
+                            let created_at = Self::parse_timestamp(&v, "timestamp").ok();
 
-                        messages.push(MessageRecord {
-                            role: role.to_string(),
-                            content_text,
-                            created_at: created_at.unwrap_or_default(),
-                            seq_no,
-                            metadata_json: "{}".to_string(),
-                        });
-                        seq_no += 1;
+                            if started_at.is_none() {
+                                started_at = created_at.clone();
+                            }
+                            ended_at = created_at.clone();
+
+                            messages.push(MessageRecord {
+                                role: "tool".to_string(),
+                                content_text: args.to_string(),
+                                created_at: created_at.unwrap_or_default(),
+                                seq_no,
+                                metadata_json: format!(r#"{{"tool_name":"{}","kind":"tool_call"}}"#, tool_name),
+                            });
+                            seq_no += 1;
+                        }
+                        "function_call_output" | "custom_tool_call_output" => {
+                            let output = payload
+                                .get("output")
+                                .and_then(|o| o.as_str())
+                                .unwrap_or("");
+                            if output.is_empty() {
+                                continue;
+                            }
+                            let created_at = Self::parse_timestamp(&v, "timestamp").ok();
+                            ended_at = created_at.clone();
+
+                            messages.push(MessageRecord {
+                                role: "tool".to_string(),
+                                content_text: output.to_string(),
+                                created_at: created_at.unwrap_or_default(),
+                                seq_no,
+                                metadata_json: r#"{"kind":"tool_result"}"#.to_string(),
+                            });
+                            seq_no += 1;
+                        }
+                        _ => {}
                     }
                 }
                 _ => {}
