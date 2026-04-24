@@ -75,6 +75,7 @@ describe("App", () => {
         title: "Codex: project-b",
         updatedAt: "2026-04-20T10:00:00Z",
         projectName: "project-b",
+        projectPath: "/tmp/project-b",
         messageCount: 2,
         preview: "Open this session.",
         fileSize: 0,
@@ -112,7 +113,7 @@ describe("App", () => {
 
     await waitFor(() => {
       expect(getSessionDetailMock).toHaveBeenCalledWith("session:codex:abc");
-      expect(screen.getByText("/tmp/project-b")).toBeInTheDocument();
+      expect(screen.getAllByText("/tmp/project-b").length).toBeGreaterThan(0);
     });
   });
 
@@ -126,6 +127,7 @@ describe("App", () => {
         title: "Codex: project-a",
         updatedAt: "2026-04-20T10:00:00Z",
         projectName: "project-a",
+        projectPath: "/tmp/project-a",
         messageCount: 2,
         preview: "First session.",
         fileSize: 0,
@@ -137,6 +139,7 @@ describe("App", () => {
         title: "Codex: project-b",
         updatedAt: "2026-04-20T11:00:00Z",
         projectName: "project-b",
+        projectPath: "/tmp/project-b",
         messageCount: 2,
         preview: "Second session.",
         fileSize: 0,
@@ -177,7 +180,7 @@ describe("App", () => {
 
     render(<App />);
 
-    expect(await screen.findByText("/tmp/project-a")).toBeInTheDocument();
+    expect((await screen.findAllByText("/tmp/project-a")).length).toBeGreaterThan(0);
 
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Codex: project-b" }));
@@ -186,7 +189,7 @@ describe("App", () => {
     expect(loadingStatus).toBeInTheDocument();
     expect(within(loadingStatus).getAllByText("project-b").length).toBeGreaterThan(0);
     expect(within(loadingStatus).getByText("Codex")).toBeInTheDocument();
-    expect(screen.getByText("/tmp/project-a")).toBeInTheDocument();
+    expect(screen.getAllByText("/tmp/project-a").length).toBeGreaterThan(0);
 
     secondDetailDeferred.resolve({
       id: "session:codex:bbb",
@@ -214,7 +217,7 @@ describe("App", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("/tmp/project-b")).toBeInTheDocument();
+      expect(screen.getAllByText("/tmp/project-b").length).toBeGreaterThan(0);
     });
 
     await waitFor(() => {

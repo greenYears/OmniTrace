@@ -9,6 +9,7 @@ export type SessionListItem = {
   title: string;
   updatedAt: string;
   projectName: string;
+  projectPath: string;
   messageCount: number;
   preview: string;
   fileSize: number;

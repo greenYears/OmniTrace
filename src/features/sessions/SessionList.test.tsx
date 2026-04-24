@@ -34,6 +34,7 @@ describe("SessionList", () => {
             title: "Claude Code: project-a",
             updatedAt: "2026-04-20T12:00:00Z",
             projectName: "project-a",
+        projectPath: "/tmp/project-a",
             messageCount: 3,
             preview: "",
             fileSize: 0,
@@ -45,6 +46,7 @@ describe("SessionList", () => {
             title: "Codex: project-b",
             updatedAt: "2026-04-20T12:01:00Z",
             projectName: "project-b",
+        projectPath: "/tmp/project-b",
             messageCount: 7,
             preview: "Open this session.",
             fileSize: 0,
@@ -82,6 +84,7 @@ describe("SessionList", () => {
             title: "OmniTrace",
             updatedAt: "2026-04-21T05:58:49.485Z",
             projectName: "OmniTrace",
+        projectPath: "/tmp/OmniTrace",
             messageCount: 3,
             preview: "请优化一下下面的布局和排版。",
             fileSize: 0,
@@ -97,6 +100,35 @@ describe("SessionList", () => {
     expect(screen.getAllByText("OmniTrace")).toHaveLength(1);
   });
 
+  it("keeps time on its own row without rendering project paths", () => {
+    render(
+      <SessionList
+        sessions={[
+          {
+            id: "1",
+            sourceId: "codex",
+            title: "Codex: OmniTrace",
+            updatedAt: "2026-04-20T12:00:00Z",
+            projectName: "OmniTrace",
+            projectPath: "/Users/test/workspace/OmniTrace",
+            messageCount: 3,
+            preview: "请优化一下下面的布局和排版。",
+            fileSize: 124000,
+            modelId: "gpt-5.4-codex-high",
+          },
+        ]}
+        selectedId="1"
+        onSelect={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByText("~/workspace/OmniTrace")).not.toBeInTheDocument();
+    expect(screen.queryByText("/Users/test/workspace/OmniTrace")).not.toBeInTheDocument();
+    expect(screen.getByText(/2026-/).closest(".session-list-item-time")).toBeInTheDocument();
+    expect(screen.getByText(/KB/).closest(".session-list-item-meta")).toBeInTheDocument();
+  });
+
   it("renders session cards as block-level buttons to avoid extra inter-card gaps", () => {
     render(
       <SessionList
@@ -107,6 +139,7 @@ describe("SessionList", () => {
             title: "Claude Code: OmniTrace",
             updatedAt: "2026-04-21T05:58:49.485Z",
             projectName: "OmniTrace",
+        projectPath: "/tmp/OmniTrace",
             messageCount: 3,
             preview: "请优化一下下面的布局和排版。",
             fileSize: 0,
@@ -138,6 +171,7 @@ describe("SessionList", () => {
             title: "Claude Code: OmniTrace",
             updatedAt: "2026-04-21T05:58:49.485Z",
             projectName: "OmniTrace",
+        projectPath: "/tmp/OmniTrace",
             messageCount: 3,
             preview: "请优化一下下面的布局和排版。",
             fileSize: 0,
@@ -166,6 +200,7 @@ describe("SessionList", () => {
             title: "Claude Code: OmniTrace",
             updatedAt: "2026-04-21T05:58:49.485Z",
             projectName: "OmniTrace",
+        projectPath: "/tmp/OmniTrace",
             messageCount: 3,
             preview: "请优化一下下面的布局和排版。",
             fileSize: 0,
@@ -195,6 +230,7 @@ describe("SessionList", () => {
             title: "Claude Code: project-a",
             updatedAt: "2026-04-20T12:00:00Z",
             projectName: "project-a",
+        projectPath: "/tmp/project-a",
             messageCount: 3,
             preview: "",
             fileSize: 0,
@@ -206,6 +242,7 @@ describe("SessionList", () => {
             title: "Codex: project-b",
             updatedAt: "2026-04-20T12:01:00Z",
             projectName: "project-b",
+        projectPath: "/tmp/project-b",
             messageCount: 7,
             preview: "Open this session.",
             fileSize: 0,
@@ -227,6 +264,7 @@ describe("SessionList", () => {
             title: "Claude Code: project-a",
             updatedAt: "2026-04-20T12:00:00Z",
             projectName: "project-a",
+        projectPath: "/tmp/project-a",
             messageCount: 3,
             preview: "",
             fileSize: 0,
@@ -238,6 +276,7 @@ describe("SessionList", () => {
             title: "Codex: project-b",
             updatedAt: "2026-04-20T12:01:00Z",
             projectName: "project-b",
+        projectPath: "/tmp/project-b",
             messageCount: 7,
             preview: "Open this session.",
             fileSize: 0,
@@ -266,6 +305,7 @@ describe("SessionList", () => {
             title: "Codex: project-b",
             updatedAt: "2026-04-20T12:01:00Z",
             projectName: "project-b",
+        projectPath: "/tmp/project-b",
             messageCount: 7,
             preview: "Open this session.",
             fileSize: 0,
@@ -293,6 +333,7 @@ describe("SessionList", () => {
       title: "Codex: project-b",
       updatedAt: "2026-04-20T12:01:00Z",
       projectName: "project-b",
+        projectPath: "/tmp/project-b",
       messageCount: 7,
       preview: "Open this session.",
       fileSize: 0,
@@ -306,6 +347,7 @@ describe("SessionList", () => {
       title: "Claude Code: project-a",
       updatedAt: "2026-04-20T12:00:00Z",
       projectName: "project-a",
+        projectPath: "/tmp/project-a",
       messageCount: 3,
       preview: "",
       fileSize: 0,

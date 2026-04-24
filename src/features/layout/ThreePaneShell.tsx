@@ -1,4 +1,4 @@
-import { SidebarFilters } from "../sidebar/SidebarFilters";
+import { SidebarFilters, type ProjectFilterOption } from "../sidebar/SidebarFilters";
 import type {
   SessionDetail,
   SessionListItem,
@@ -70,9 +70,19 @@ export function ThreePaneShell({
         : 30 * 24 * 60 * 60 * 1000;
     return ageMs <= maxAgeMs;
   });
-  const projects = [
-    "all",
-    ...Array.from(new Set(sessions.map((session) => session.projectName))),
+  const projects: ProjectFilterOption[] = [
+    { name: "all" },
+    ...Array.from(
+      sessions.reduce((byName, session) => {
+        if (!byName.has(session.projectName)) {
+          byName.set(session.projectName, {
+            name: session.projectName,
+            path: session.projectPath,
+          });
+        }
+        return byName;
+      }, new Map<string, ProjectFilterOption>()).values(),
+    ),
   ];
   const selectedDetail =
     detail && filteredSessions.some((session) => session.id === detail.id)

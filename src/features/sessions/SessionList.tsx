@@ -164,9 +164,9 @@ export function SessionList({ sessions, selectedId, onSelect, onDelete }: Sessio
                 {session.modelId && (
                   <span className="session-list-model-badge">{formatModelId(session.modelId)}</span>
                 )}
-                <span>{formatTimeAgo(session.updatedAt)}</span>
                 {session.fileSize > 0 && <span>{formatFileSize(session.fileSize)}</span>}
               </div>
+              <div className="session-list-item-time">{formatTimeAgo(session.updatedAt)}</div>
               {session.preview && (
                 <div className="session-list-item-preview">{session.preview}</div>
               )}

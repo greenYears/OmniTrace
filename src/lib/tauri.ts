@@ -9,6 +9,7 @@ type SessionListItemDto = {
   title: string;
   updated_at: string;
   project_name: string;
+  project_path: string;
   message_count: number;
   preview: string;
   file_size: number;
@@ -63,6 +64,7 @@ export async function scanSources(): Promise<SessionListItem[]> {
     title: session.title,
     updatedAt: session.updated_at,
     projectName: session.project_name,
+    projectPath: session.project_path,
     messageCount: session.message_count,
     preview: session.preview,
     fileSize: session.file_size,

@@ -21,6 +21,7 @@ pub struct SessionListItem {
     pub title: String,
     pub updated_at: String,
     pub project_name: String,
+    pub project_path: String,
     pub message_count: i64,
     pub preview: String,
     pub file_size: i64,
@@ -101,6 +102,7 @@ SELECT
   s.title,
   s.updated_at,
   p.display_name,
+  p.path,
   s.message_count,
   COALESCE(
     (SELECT SUBSTR(m.content_text, 1, 120)
@@ -127,10 +129,11 @@ ORDER BY s.updated_at DESC, s.source_id ASC, s.external_id ASC
                 title: row.get(3)?,
                 updated_at: row.get(4)?,
                 project_name: row.get(5)?,
-                message_count: row.get(6)?,
-                preview: row.get(7)?,
-                file_size: row.get(8)?,
-                model_id: row.get(9)?,
+                project_path: row.get(6)?,
+                message_count: row.get(7)?,
+                preview: row.get(8)?,
+                file_size: row.get(9)?,
+                model_id: row.get(10)?,
             })
         })
         .map_err(|e| e.to_string())?;
