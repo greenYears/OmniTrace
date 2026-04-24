@@ -1,6 +1,8 @@
 import clsx from "clsx";
 import { useEffect, useRef, useState } from "react";
 
+import claudeCodeIcon from "../../assets/claude-code.svg";
+import codexIcon from "../../assets/codex.svg";
 import type { SessionListItem } from "../../types/session";
 
 type SessionListProps = {
@@ -16,9 +18,9 @@ function formatTimeAgo(dateStr: string): string {
   const ms = Date.now() - Date.parse(dateStr);
   if (Number.isNaN(ms)) return "";
   const minutes = Math.floor(ms / 60000);
-  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 60) return `${minutes}分钟前`;
   const hours = Math.floor(minutes / 60);
-  if (hours < 48) return `${hours}h ago`;
+  if (hours < 48) return `${hours}小时前`;
   const d = new Date(dateStr);
   const yyyy = d.getFullYear();
   const MM = String(d.getMonth() + 1).padStart(2, "0");
@@ -29,7 +31,7 @@ function formatTimeAgo(dateStr: string): string {
 }
 
 function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024) return `${bytes} 字节`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
@@ -43,9 +45,9 @@ function formatModelId(modelId: string): string {
   return version ? `${family}-${version}` : family;
 }
 
-function getSourceIcon(sourceId: string): { text: string; cls: string } {
-  if (sourceId === "codex") return { text: "CX", cls: "is-codex" };
-  return { text: "C", cls: "is-claude-code" };
+function getSourceIcon(sourceId: string): { src: string; cls: string } {
+  if (sourceId === "codex") return { src: codexIcon, cls: "is-codex" };
+  return { src: claudeCodeIcon, cls: "is-claude-code" };
 }
 
 function stripTitle(title: string): string {
@@ -129,8 +131,8 @@ export function SessionList({ sessions, selectedId, onSelect, onDelete }: Sessio
         const showProjectName = session.projectName !== displayTitle;
         const sourceIcon = getSourceIcon(session.sourceId);
         const copyLabel = isCopied
-          ? `已复制 ${displayTitle} 的 Resume 命令`
-          : `复制 ${displayTitle} 的 Resume 命令`;
+          ? `已复制 ${displayTitle} 的恢复命令`
+          : `复制 ${displayTitle} 的恢复命令`;
 
         return (
           <div key={session.id} className={clsx("session-list-item-wrap", `source-${session.sourceId}`)}>
@@ -153,7 +155,7 @@ export function SessionList({ sessions, selectedId, onSelect, onDelete }: Sessio
                   className={clsx("source-icon", "session-list-source-icon", sourceIcon.cls)}
                   aria-label={session.sourceId}
                 >
-                  {sourceIcon.text}
+                  <img src={sourceIcon.src} alt="" width="14" height="14" />
                 </span>
                 <span className="session-list-item-title">{displayTitle}</span>
               </div>
@@ -189,7 +191,7 @@ export function SessionList({ sessions, selectedId, onSelect, onDelete }: Sessio
                     }, COPY_FEEDBACK_MS);
                   }}
                 >
-                  {isCopied ? "已复制" : "Resume"}
+                  {isCopied ? "已复制" : "恢复"}
                 </button>
                 <button
                   type="button"

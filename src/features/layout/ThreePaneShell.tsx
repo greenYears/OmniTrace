@@ -101,7 +101,7 @@ export function ThreePaneShell({
 
       {filteredSessions.length === 0 ? (
         <section className="viewer-empty-state" aria-label="Empty state">
-          <p>No sessions found for this filter.</p>
+          <p>未找到符合条件的会话</p>
         </section>
       ) : (
         <>

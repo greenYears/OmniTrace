@@ -51,16 +51,16 @@ describe("App", () => {
     );
 
     expect(screen.getByRole("heading", { name: "OmniTrace" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "↻ Scan" })).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "all" })).toHaveLength(3);
-    expect(screen.getByRole("button", { name: "codex" })).toBeInTheDocument();
-    expect(await screen.findByText("No sessions found for this filter.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "↻ 扫描" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "全部" })).toHaveLength(3);
+    expect(screen.getByRole("button", { name: "Codex" })).toBeInTheDocument();
+    expect(await screen.findByText("未找到符合条件的会话")).toBeInTheDocument();
 
     await waitFor(() => {
       expect(scanSourcesMock).toHaveBeenCalledTimes(1);
     });
 
-    expect(screen.getByText(/0 sessions/)).toBeInTheDocument();
+    expect(screen.getByText(/0 个会话/)).toBeInTheDocument();
 
     expect(
       screen.queryByRole("button", { name: "Codex: project-a" }),

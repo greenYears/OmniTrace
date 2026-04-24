@@ -22,7 +22,7 @@ describe("SidebarFilters", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "project-b" }));
-    await user.click(screen.getByRole("button", { name: "30d" }));
+    await user.click(screen.getByRole("button", { name: "最近 30 天" }));
 
     expect(onChange).toHaveBeenCalledWith({ projectFilter: "project-b" });
     expect(onChange).toHaveBeenCalledWith({ timeRange: "30d" });

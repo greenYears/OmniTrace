@@ -96,13 +96,13 @@ function App() {
           <div>
             <h1>OmniTrace</h1>
             <span className="app-status">
-              {sessions.length} session{sessions.length !== 1 ? "s" : ""}
-              {lastScannedAt ? ` · Last scanned ${lastScannedAt}` : ""}
+              {sessions.length} 个会话
+              {lastScannedAt ? ` · 上次扫描 ${lastScannedAt}` : ""}
             </span>
           </div>
         </div>
         <button className="scan-button" type="button" onClick={() => void handleRefresh()}>
-          ↻ Scan
+          ↻ 扫描
         </button>
       </header>
 

@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import clsx from "clsx";
 
+import claudeCodeIcon from "../../assets/claude-code.svg";
+import codexIcon from "../../assets/codex.svg";
 import type { SessionDetail as SessionDetailType, SessionMessage } from "../../types/session";
 
 const COLLAPSED_MAX = 140;
@@ -13,15 +15,15 @@ const STAGGER_REVEAL_COUNT = 8;
 
 type SourceMeta = {
   label: string;
-  icon: string;
+  iconSrc: string;
   iconClass: string;
 };
 
 function getSourceMeta(sourceId: string): SourceMeta {
   if (sourceId === "codex") {
-    return { label: "Codex", icon: "CX", iconClass: "is-codex" };
+    return { label: "Codex", iconSrc: codexIcon, iconClass: "is-codex" };
   }
-  return { label: "Claude", icon: "C", iconClass: "is-claude-code" };
+  return { label: "Claude", iconSrc: claudeCodeIcon, iconClass: "is-claude-code" };
 }
 
 function Chevron({ open }: { open: boolean }) {
@@ -68,7 +70,7 @@ function UserMessage({ msg, isLatest, className }: { msg: SessionMessage; isLate
       <div className="msg-block msg-user">
         <div className="msg-user-header">
           <div className="msg-user-icon" aria-hidden="true">⟩</div>
-          <span className="msg-user-label">You</span>
+          <span className="msg-user-label">用户</span>
           {isLatest && <span className="msg-latest-badge">最新</span>}
         </div>
         <CollapsibleContent text={text} />
@@ -95,7 +97,7 @@ function AssistantMessage({
       <div className="msg-block msg-assistant">
         <div className="msg-assistant-header">
           <div className={clsx("msg-source-icon", sourceMeta.iconClass)} aria-hidden="true">
-            {sourceMeta.icon}
+            <img src={sourceMeta.iconSrc} alt="" width="10" height="10" />
           </div>
           <span className="msg-source-label">{sourceMeta.label}</span>
           {isLatest && <span className="msg-latest-badge">最新</span>}
@@ -114,7 +116,7 @@ function basename(p: string) {
 function ToolMessage({ msg, isLatest, className }: { msg: SessionMessage; isLatest?: boolean; className?: string }) {
   const [open, setOpen] = useState(false);
   const hasContent = msg.contentText.trim().length > 0;
-  const label = msg.toolName || "Tool";
+  const label = msg.toolName || "工具";
   const summary = msg.filePaths.length > 0
     ? msg.filePaths.map(basename).join(", ")
     : msg.kind.replace(/_/g, " ");
@@ -302,7 +304,7 @@ export function SessionDetail({ detail, isLoading = false, pendingSession = null
   if (!contentDetail && !isLoading) {
     return (
       <section className="session-detail session-detail-empty" aria-label="Session detail">
-        <p>Select a session to inspect its full history.</p>
+        <p>选择一个会话以查看完整历史</p>
       </section>
     );
   }
@@ -383,15 +385,15 @@ export function SessionDetail({ detail, isLoading = false, pendingSession = null
             <div className="session-detail-loading-header">
               {pendingSourceMeta && (
                 <div className={clsx("msg-source-icon", "session-detail-loading-source", pendingSourceMeta.iconClass)} aria-hidden="true">
-                  {pendingSourceMeta.icon}
+                  {pendingSourceMeta.iconSrc && <img src={pendingSourceMeta.iconSrc} alt="" width="10" height="10" />}
                 </div>
               )}
               <div className="session-detail-loading-header-copy">
                 <div className="session-detail-loading-title">{pendingTitle || "正在切换会话"}</div>
                 <div className="session-detail-loading-subtitle">
-                  <span>{pendingSourceMeta?.label ?? "Session"}</span>
+                  <span>{pendingSourceMeta?.label ?? "会话"}</span>
                   <span className="session-detail-loading-sep" aria-hidden="true">·</span>
-                  <span>{pendingSession?.projectName ?? "Loading"}</span>
+                  <span>{pendingSession?.projectName ?? "加载中"}</span>
                 </div>
               </div>
               <div className="session-detail-loading-pulse" aria-hidden="true">

@@ -64,7 +64,7 @@ describe("SessionList", () => {
       screen.getByRole("button", { name: "Codex: project-b" }),
     ).toBeInTheDocument();
     expect(screen.getAllByText("project-b").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("CX").length).toBeGreaterThan(0);
+    expect(screen.getAllByAltText("").length).toBeGreaterThan(0);
 
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Codex: project-b" }));
@@ -279,10 +279,10 @@ describe("SessionList", () => {
     );
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "复制 project-b 的 Resume 命令" }));
+    await user.click(screen.getByRole("button", { name: "复制 project-b 的恢复命令" }));
 
     expect(onSelect).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "已复制 project-b 的 Resume 命令" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "已复制 project-b 的恢复命令" })).toBeInTheDocument();
   });
 
   it("builds the correct resume commands for codex and claude", () => {

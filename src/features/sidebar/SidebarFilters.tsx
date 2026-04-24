@@ -19,6 +19,7 @@ type SidebarFiltersProps = {
 type FilterGroupProps<T extends string> = {
   title: string;
   options: T[];
+  labels?: Record<string, string>;
   value: T;
   onSelect: (value: T) => void;
 };
@@ -26,6 +27,7 @@ type FilterGroupProps<T extends string> = {
 function FilterGroup<T extends string>({
   title,
   options,
+  labels,
   value,
   onSelect,
 }: FilterGroupProps<T>) {
@@ -43,7 +45,7 @@ function FilterGroup<T extends string>({
             )}
             onClick={() => onSelect(item)}
           >
-            {item}
+            {labels?.[item] ?? item}
           </button>
         ))}
       </div>
@@ -61,22 +63,25 @@ export function SidebarFilters({
   onChange,
 }: SidebarFiltersProps) {
   return (
-    <aside className="three-pane three-pane-left sidebar-filters" aria-label="Filters">
+    <aside className="three-pane three-pane-left sidebar-filters" aria-label="筛选">
       <FilterGroup
-        title="Time"
+        title="时间范围"
         options={timeRanges}
+        labels={{ all: "全部", "7d": "最近 7 天", "30d": "最近 30 天" }}
         value={timeRange}
         onSelect={(value) => onChange({ timeRange: value })}
       />
       <FilterGroup
-        title="Sources"
+        title="来源"
         options={sources}
+        labels={{ all: "全部", claude_code: "Claude Code", codex: "Codex" }}
         value={source}
         onSelect={(value) => onChange({ sourceFilter: value })}
       />
       <FilterGroup
-        title="Projects"
+        title="项目"
         options={projects}
+        labels={{ all: "全部" }}
         value={project}
         onSelect={(value) => onChange({ projectFilter: value })}
       />
