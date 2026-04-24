@@ -141,6 +141,39 @@ describe("SessionDetail", () => {
     expect(screen.getByText(/标题转为加粗/)).toHaveClass("md-list-item");
   });
 
+  it("uses the terminal-inspired detail theme for transcripts", () => {
+    render(
+      <SessionDetail
+        detail={{
+          id: "session:codex:theme",
+          sourceId: "codex",
+          title: "Codex: OmniTrace",
+          updatedAt: "2026-04-21T10:00:00Z",
+          startedAt: "2026-04-21T09:58:00Z",
+          endedAt: "2026-04-21T10:00:00Z",
+          projectName: "OmniTrace",
+          projectPath: "/Users/test/workspace/OmniTrace",
+          messageCount: 1,
+          preview: "terminal theme",
+          fileSize: 0,
+          modelId: "",
+          messages: [
+            {
+              id: "message:theme",
+              role: "assistant",
+              kind: "message",
+              contentText: "terminal theme",
+              createdAt: "2026-04-21T09:58:30Z",
+              filePaths: [],
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByLabelText("Session detail")).toHaveClass("is-terminal-theme");
+  });
+
   it("scrolls the detail pane to the latest message when a session loads", () => {
     render(
       <SessionDetail

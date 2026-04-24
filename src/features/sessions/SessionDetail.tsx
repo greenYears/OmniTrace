@@ -376,6 +376,7 @@ export function SessionDetail({ detail, isLoading = false, pendingSession = null
       ref={containerRef}
       className={clsx(
         "session-detail",
+        "is-terminal-theme",
         contentDetail && "has-detail",
         isLoading && "is-loading",
         isTitleSyncing && "is-title-syncing",

@@ -518,14 +518,28 @@ body {
 }
 
 .session-detail {
+  --terminal-bg: #1b1b29;
+  --terminal-bg-deep: #141421;
+  --terminal-panel: rgba(31, 32, 47, 0.82);
+  --terminal-panel-strong: rgba(38, 40, 58, 0.9);
+  --terminal-border: rgba(167, 176, 213, 0.16);
+  --terminal-border-strong: rgba(167, 176, 213, 0.26);
+  --terminal-text: #d7dbf0;
+  --terminal-muted: #8e94ad;
+  --terminal-dim: #646b82;
+  --terminal-accent: #9bd8d0;
+  --terminal-green: #91d6b7;
+  --terminal-blue: #9fc5ff;
   height: 100%;
   min-height: 0;
   overflow: auto;
   padding: 20px 24px;
   position: relative;
   background:
-    radial-gradient(circle at top right, rgba(16, 163, 127, 0.05), transparent 28%),
-    linear-gradient(180deg, #fcfcfd 0%, #f7f7f8 100%);
+    radial-gradient(circle at top right, rgba(102, 217, 206, 0.11), transparent 30%),
+    radial-gradient(circle at bottom left, rgba(107, 114, 190, 0.13), transparent 34%),
+    linear-gradient(180deg, var(--terminal-bg) 0%, var(--terminal-bg-deep) 100%);
+  color: var(--terminal-text);
 }
 
 .session-detail-stage {
@@ -573,7 +587,7 @@ body {
 }
 
 .session-detail-empty {
-  color: #86868b;
+  color: var(--terminal-muted);
   display: grid;
   place-items: center;
   height: 100%;
@@ -585,18 +599,19 @@ body {
   gap: 8px;
   padding-bottom: 12px;
   margin-bottom: 12px;
-  border-bottom: 1px solid #e5e5e7;
+  border-bottom: 1px solid var(--terminal-border);
 }
 
 .session-detail-path {
   font-size: 12px;
-  color: #86868b;
+  color: var(--terminal-muted);
 }
 
 .session-detail-source-badge {
   font-size: 10px;
-  color: #007aff;
-  background: rgba(0, 122, 255, 0.05);
+  color: var(--terminal-accent);
+  background: rgba(155, 216, 208, 0.11);
+  border: 1px solid rgba(155, 216, 208, 0.16);
   padding: 2px 6px;
   border-radius: 4px;
 }
@@ -608,7 +623,7 @@ body {
   align-items: flex-start;
   justify-content: center;
   padding-top: 32px;
-  background: linear-gradient(180deg, rgba(247, 247, 248, 0.72), rgba(247, 247, 248, 0.92));
+  background: linear-gradient(180deg, rgba(27, 27, 41, 0.72), rgba(20, 20, 33, 0.94));
   backdrop-filter: blur(10px);
   z-index: 3;
   pointer-events: none;
@@ -618,10 +633,10 @@ body {
 .session-detail-loading-panel {
   width: min(100%, 720px);
   padding: 18px 18px 16px;
-  border: 1px solid rgba(229, 229, 231, 0.95);
+  border: 1px solid var(--terminal-border-strong);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.88);
-  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.08);
+  background: rgba(28, 29, 43, 0.9);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.24);
 }
 
 .session-detail-loading-header {
@@ -645,7 +660,7 @@ body {
 }
 
 .session-detail-loading-title {
-  color: #1d1d1f;
+  color: var(--terminal-text);
   font-size: 14px;
   font-weight: 600;
   line-height: 1.25;
@@ -656,13 +671,13 @@ body {
   align-items: center;
   gap: 6px;
   margin-top: 2px;
-  color: #86868b;
+  color: var(--terminal-muted);
   font-size: 11px;
   font-weight: 500;
 }
 
 .session-detail-loading-sep {
-  color: #b3b3b8;
+  color: var(--terminal-dim);
 }
 
 .session-detail-loading-pulse {
@@ -689,7 +704,7 @@ body {
 
 .session-detail-loading-label {
   margin-bottom: 12px;
-  color: #3a3a3c;
+  color: var(--terminal-text);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -707,7 +722,7 @@ body {
 .session-detail-skeleton-bubble {
   position: relative;
   overflow: hidden;
-  background: rgba(222, 225, 230, 0.92);
+  background: rgba(72, 77, 102, 0.82);
 }
 
 .session-detail-skeleton-line::after,
@@ -716,7 +731,7 @@ body {
   position: absolute;
   inset: 0;
   transform: translateX(-100%);
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.85), transparent);
+  background: linear-gradient(90deg, transparent, rgba(190, 199, 232, 0.2), transparent);
   animation: session-skeleton-shimmer 1.35s ease-in-out infinite;
 }
 
@@ -778,8 +793,8 @@ body {
   position: absolute;
   inset: -4px -6px;
   border-radius: 14px;
-  background: linear-gradient(135deg, rgba(0, 122, 255, 0.08), rgba(16, 163, 127, 0.04));
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+  background: linear-gradient(135deg, rgba(155, 216, 208, 0.12), rgba(116, 126, 209, 0.06));
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
   pointer-events: none;
   z-index: 0;
 }
@@ -798,11 +813,11 @@ body {
 
 .msg-user {
   width: min(84%, 760px);
-  background: linear-gradient(180deg, rgba(0, 122, 255, 0.08), rgba(0, 122, 255, 0.04));
-  border: 1px solid rgba(0, 122, 255, 0.12);
+  background: linear-gradient(180deg, rgba(67, 76, 113, 0.58), rgba(42, 47, 74, 0.68));
+  border: 1px solid rgba(159, 197, 255, 0.18);
   border-radius: 14px 14px 6px 14px;
   padding: 8px 10px;
-  box-shadow: 0 8px 18px rgba(0, 122, 255, 0.06);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16);
 }
 
 .msg-user-header {
@@ -830,14 +845,14 @@ body {
 .msg-user-label {
   font-size: 11px;
   font-weight: 600;
-  color: #007aff;
+  color: var(--terminal-blue);
   letter-spacing: 0.02em;
 }
 
 .msg-user .msg-content {
   font-size: 13px;
   line-height: 1.5;
-  color: #1d1d1f;
+  color: var(--terminal-text);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -851,10 +866,10 @@ body {
 .msg-assistant {
   width: min(88%, 820px);
   padding: 9px 11px;
-  background: rgba(255, 255, 255, 0.78);
-  border: 1px solid rgba(229, 229, 231, 0.95);
+  background: var(--terminal-panel);
+  border: 1px solid var(--terminal-border);
   border-radius: 14px 14px 14px 6px;
-  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.04);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.14);
   backdrop-filter: blur(8px);
 }
 
@@ -890,7 +905,7 @@ body {
 .msg-source-label {
   font-size: 11px;
   font-weight: 600;
-  color: #86868b;
+  color: var(--terminal-muted);
   letter-spacing: 0.02em;
 }
 
@@ -898,8 +913,8 @@ body {
   margin-left: auto;
   padding: 2px 7px;
   border-radius: 999px;
-  background: rgba(16, 163, 127, 0.1);
-  color: #0f766e;
+  background: rgba(145, 214, 183, 0.13);
+  color: var(--terminal-green);
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -908,7 +923,7 @@ body {
 .msg-assistant .msg-content {
   font-size: 13px;
   line-height: 1.55;
-  color: #1d1d1f;
+  color: var(--terminal-text);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -922,11 +937,11 @@ body {
 .msg-tool {
   width: min(82%, 760px);
   margin-left: 16px;
-  border: 1px solid rgba(232, 232, 234, 0.95);
+  border: 1px solid rgba(155, 216, 208, 0.13);
   border-radius: 12px;
-  background: rgba(244, 245, 247, 0.92);
+  background: rgba(15, 17, 28, 0.52);
   overflow: hidden;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .msg-tool-summary {
@@ -944,15 +959,15 @@ body {
 }
 
 .msg-tool-summary:hover {
-  background: rgba(0, 0, 0, 0.02);
+  background: rgba(155, 216, 208, 0.06);
 }
 
 .msg-tool-name {
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
   font-size: 11px;
   font-weight: 600;
-  color: #0f766e;
-  background: rgba(15, 118, 110, 0.08);
+  color: var(--terminal-green);
+  background: rgba(145, 214, 183, 0.1);
   padding: 1px 6px;
   border-radius: 3px;
   flex-shrink: 0;
@@ -961,7 +976,7 @@ body {
 .msg-tool-summary-path {
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
   font-size: 11px;
-  color: #86868b;
+  color: var(--terminal-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -971,7 +986,7 @@ body {
 
 .msg-chevron {
   flex-shrink: 0;
-  color: #86868b;
+  color: var(--terminal-muted);
   transition: transform 0.15s ease;
 }
 
@@ -981,7 +996,7 @@ body {
 
 .msg-tool-body {
   padding: 2px 10px 8px;
-  border-top: 1px solid #e8e8ea;
+  border-top: 1px solid var(--terminal-border);
 }
 
 .msg-tool-paths {
@@ -994,8 +1009,8 @@ body {
 .msg-tool-path {
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
   font-size: 11px;
-  color: #6e6e73;
-  background: rgba(0, 0, 0, 0.03);
+  color: var(--terminal-accent);
+  background: rgba(155, 216, 208, 0.08);
   border-radius: 3px;
   padding: 2px 6px;
   overflow-wrap: anywhere;
@@ -1005,7 +1020,7 @@ body {
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
   font-size: 12px;
   line-height: 1.4;
-  color: #48484a;
+  color: var(--terminal-muted);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -1036,7 +1051,7 @@ body {
   line-height: 1.42;
   white-space: pre-wrap;
   word-break: break-word;
-  color: #1d1d1f;
+  color: var(--terminal-text);
 }
 
 .msg-collapsible .md-compact {
@@ -1073,7 +1088,8 @@ body {
 .msg-collapsible .md-inline-code {
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
   font-size: 0.94em;
-  background: rgba(0, 0, 0, 0.06);
+  color: var(--terminal-accent);
+  background: rgba(255, 255, 255, 0.07);
   padding: 0.1em 0.3em;
   border-radius: 4px;
 }
@@ -1082,7 +1098,9 @@ body {
   display: block;
   margin: 0.35em 0;
   padding: 0.5em 0.6em;
-  background: rgba(0, 0, 0, 0.05);
+  color: var(--terminal-text);
+  background: rgba(7, 9, 18, 0.52);
+  border: 1px solid rgba(155, 216, 208, 0.1);
   border-radius: 6px;
   overflow-x: auto;
   white-space: pre;
@@ -1092,12 +1110,12 @@ body {
 }
 
 .msg-collapsible .md-quote {
-  color: #6e6e73;
+  color: var(--terminal-muted);
   font-style: italic;
 }
 
 .msg-collapsible a {
-  color: #0071e3;
+  color: var(--terminal-accent);
   text-decoration: none;
 }
 
@@ -1121,23 +1139,23 @@ body {
   right: 0;
   bottom: 0;
   height: 2.5em;
-  background: linear-gradient(transparent, #fff);
+  background: linear-gradient(transparent, rgba(31, 32, 47, 0.98));
   pointer-events: none;
 }
 
 .msg-user .msg-collapsible.is-collapsed::after {
-  background: linear-gradient(transparent, rgba(0, 122, 255, 0.04));
+  background: linear-gradient(transparent, rgba(42, 47, 74, 0.98));
 }
 
 .msg-tool .msg-collapsible {
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
   font-size: 12px;
   line-height: 1.45;
-  color: #48484a;
+  color: var(--terminal-muted);
 }
 
 .msg-tool .msg-collapsible.is-collapsed::after {
-  background: linear-gradient(transparent, #f5f5f7);
+  background: linear-gradient(transparent, rgba(15, 17, 28, 0.98));
 }
 
 .msg-toggle {
@@ -1148,7 +1166,7 @@ body {
   margin-top: 2px;
   font: inherit;
   font-size: 12px;
-  color: #007aff;
+  color: var(--terminal-accent);
   cursor: pointer;
 }
 
@@ -1161,7 +1179,7 @@ body {
   bottom: 0;
   height: 64px;
   margin-top: -64px;
-  background: linear-gradient(180deg, rgba(247, 247, 248, 0), rgba(247, 247, 248, 0.94) 58%, #f7f7f8 100%);
+  background: linear-gradient(180deg, rgba(20, 20, 33, 0), rgba(20, 20, 33, 0.94) 58%, var(--terminal-bg-deep) 100%);
   pointer-events: none;
   z-index: 2;
 }
