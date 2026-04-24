@@ -95,6 +95,52 @@ describe("SessionDetail", () => {
     expect(screen.getByText("src/styles.css")).toBeInTheDocument();
   });
 
+  it("renders markdown replies in a compact TUI-like flow", () => {
+    render(
+      <SessionDetail
+        detail={{
+          id: "session:codex:markdown",
+          sourceId: "codex",
+          title: "Codex: OmniTrace",
+          updatedAt: "2026-04-21T10:00:00Z",
+          startedAt: "2026-04-21T09:58:00Z",
+          endedAt: "2026-04-21T10:00:00Z",
+          projectName: "OmniTrace",
+          projectPath: "/Users/test/workspace/OmniTrace",
+          messageCount: 1,
+          preview: "compact markdown",
+          fileSize: 0,
+          modelId: "",
+          messages: [
+            {
+              id: "message:markdown",
+              role: "assistant",
+              kind: "message",
+              contentText: [
+                "# 输出格式",
+                "",
+                "整体风格接近终端 TUI。",
+                "",
+                "- 段落不换行",
+                "- 标题转为加粗",
+              ].join("\n"),
+              createdAt: "2026-04-21T09:58:30Z",
+              filePaths: [],
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("输出格式").tagName).toBe("STRONG");
+    expect(screen.getByText("输出格式")).toHaveClass("md-flow-block");
+    expect(screen.getByText("输出格式").closest(".md-compact")).toBeInTheDocument();
+    expect(screen.getByText("整体风格接近终端 TUI。")).toHaveClass("md-flow-block");
+    expect(screen.getByText(/段落不换行/).parentElement).toHaveClass("md-flow-block");
+    expect(screen.getByText(/段落不换行/)).toHaveClass("md-list-item");
+    expect(screen.getByText(/标题转为加粗/)).toHaveClass("md-list-item");
+  });
+
   it("scrolls the detail pane to the latest message when a session loads", () => {
     render(
       <SessionDetail

@@ -1,11 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import clsx from "clsx";
+import Markdown from "react-markdown";
 
 import claudeCodeIcon from "../../assets/claude-code.svg";
 import codexIcon from "../../assets/codex.svg";
 import type { SessionDetail as SessionDetailType, SessionMessage } from "../../types/session";
 
-const COLLAPSED_MAX = 140;
+const COLLAPSED_LINE_THRESHOLD = 15;
 const LONG_TRANSCRIPT_THRESHOLD = 120;
 const INITIAL_RENDER_COUNT = 100;
 const LOAD_MORE_COUNT = 80;
@@ -38,16 +39,56 @@ function Chevron({ open }: { open: boolean }) {
   );
 }
 
-function CollapsibleContent({ text, className }: { text: string; className?: string }) {
+function CompactMarkdown({ text }: { text: string }) {
+  const normalized = text.replace(/\n{3,}/g, "\n\n");
+  return (
+    <span className="md-compact">
+      <Markdown
+        components={{
+          p: ({ children }) => <span className="md-line md-flow-block">{children}</span>,
+          code: ({ className, children, ...props }) => {
+            const isBlock = Boolean(className);
+            if (isBlock) {
+              return (
+                <code className={className} {...props}>
+                  {children}
+                </code>
+              );
+            }
+            return (
+              <code className="md-inline-code" {...props}>
+                {children}
+              </code>
+            );
+          },
+          pre: ({ children }) => <pre className="md-code-block">{children}</pre>,
+          h1: ({ children }) => <strong className="md-heading md-flow-block">{children}</strong>,
+          h2: ({ children }) => <strong className="md-heading md-flow-block">{children}</strong>,
+          h3: ({ children }) => <strong className="md-heading md-flow-block">{children}</strong>,
+          h4: ({ children }) => <strong className="md-heading md-flow-block">{children}</strong>,
+          blockquote: ({ children }) => <span className="md-quote md-flow-block">{children}</span>,
+          ul: ({ children }) => <span className="md-list md-flow-block">{children}</span>,
+          ol: ({ children }) => <span className="md-list md-flow-block">{children}</span>,
+          li: ({ children }) => <span className="md-list-item">- {children}</span>,
+        }}
+      >
+        {normalized}
+      </Markdown>
+    </span>
+  );
+}
+
+function CollapsibleContent({ text, className, markdown }: { text: string; className?: string; markdown?: boolean }) {
   const [open, setOpen] = useState(false);
-  const long = text.length > COLLAPSED_MAX;
+  const lineCount = text.split("\n").length;
+  const long = lineCount > COLLAPSED_LINE_THRESHOLD;
 
   return (
     <div className="msg-collapsible-wrap">
       <div
         className={clsx("msg-collapsible", className, !open && long && "is-collapsed")}
       >
-        {text}
+        {markdown ? <CompactMarkdown text={text} /> : text}
       </div>
       {long && (
         <button
@@ -73,7 +114,7 @@ function UserMessage({ msg, isLatest, className }: { msg: SessionMessage; isLate
           <span className="msg-user-label">用户</span>
           {isLatest && <span className="msg-latest-badge">最新</span>}
         </div>
-        <CollapsibleContent text={text} />
+        <CollapsibleContent text={text} markdown />
       </div>
     </div>
   );
@@ -102,7 +143,7 @@ function AssistantMessage({
           <span className="msg-source-label">{sourceMeta.label}</span>
           {isLatest && <span className="msg-latest-badge">最新</span>}
         </div>
-        <CollapsibleContent text={text} />
+        <CollapsibleContent text={text} markdown />
       </div>
     </div>
   );

@@ -765,7 +765,7 @@ body {
 .msg-transcript {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 7px;
   padding: 4px 0 72px;
 }
 
@@ -787,7 +787,7 @@ body {
 .msg-block {
   position: relative;
   z-index: 1;
-  padding: 8px 0;
+  padding: 5px 0;
 }
 
 /* --- User message --- */
@@ -801,7 +801,7 @@ body {
   background: linear-gradient(180deg, rgba(0, 122, 255, 0.08), rgba(0, 122, 255, 0.04));
   border: 1px solid rgba(0, 122, 255, 0.12);
   border-radius: 14px 14px 6px 14px;
-  padding: 10px 12px;
+  padding: 8px 10px;
   box-shadow: 0 8px 18px rgba(0, 122, 255, 0.06);
 }
 
@@ -850,7 +850,7 @@ body {
 
 .msg-assistant {
   width: min(88%, 820px);
-  padding: 12px 14px;
+  padding: 9px 11px;
   background: rgba(255, 255, 255, 0.78);
   border: 1px solid rgba(229, 229, 231, 0.95);
   border-radius: 14px 14px 14px 6px;
@@ -1030,15 +1030,87 @@ body {
 }
 
 .msg-collapsible {
-  font-size: 13px;
-  line-height: 1.5;
+  display: block;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 12.5px;
+  line-height: 1.42;
   white-space: pre-wrap;
   word-break: break-word;
   color: #1d1d1f;
 }
 
+.msg-collapsible .md-compact {
+  display: block;
+  white-space: normal;
+}
+
+.msg-collapsible .md-line,
+.msg-collapsible .md-heading,
+.msg-collapsible .md-quote,
+.msg-collapsible .md-list,
+.msg-collapsible .md-list-item {
+  display: block;
+  margin: 0;
+}
+
+.msg-collapsible .md-flow-block + .md-flow-block {
+  margin-top: 0.72em;
+}
+
+.msg-collapsible .md-heading {
+  font-weight: 700;
+}
+
+.msg-collapsible .md-list {
+  padding: 0;
+}
+
+.msg-collapsible .md-list-item {
+  padding-left: 1.7ch;
+  text-indent: -1.7ch;
+}
+
+.msg-collapsible .md-inline-code {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.94em;
+  background: rgba(0, 0, 0, 0.06);
+  padding: 0.1em 0.3em;
+  border-radius: 4px;
+}
+
+.msg-collapsible .md-code-block {
+  display: block;
+  margin: 0.35em 0;
+  padding: 0.5em 0.6em;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 6px;
+  overflow-x: auto;
+  white-space: pre;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.94em;
+  line-height: 1.38;
+}
+
+.msg-collapsible .md-quote {
+  color: #6e6e73;
+  font-style: italic;
+}
+
+.msg-collapsible a {
+  color: #0071e3;
+  text-decoration: none;
+}
+
+.msg-collapsible a:hover {
+  text-decoration: underline;
+}
+
+.msg-collapsible strong {
+  font-weight: 600;
+}
+
 .msg-collapsible.is-collapsed {
-  max-height: 6.8em;
+  max-height: 24em;
   overflow: hidden;
 }
 
