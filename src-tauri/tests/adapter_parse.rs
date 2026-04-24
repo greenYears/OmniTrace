@@ -153,3 +153,28 @@ fn discover_sessions_skips_symlink_directories() {
     assert!(sessions[0].ends_with("sample.jsonl"));
     let _ = fs::remove_dir_all(root);
 }
+
+#[test]
+fn discover_sessions_skips_claude_subagent_directories() {
+    let root = temp_path("discover-subagents");
+    let project_dir = root.join("project-a");
+    let subagent_dir = project_dir.join("subagents");
+    fs::create_dir_all(&subagent_dir).expect("subagent dir should be created");
+    fs::write(
+        project_dir.join("main.jsonl"),
+        "{\"display\":\"/help\",\"pastedContents\":{},\"timestamp\":1776651200000,\"project\":\"/Users/REDACTED/workspace/acme/monorepo\",\"sessionId\":\"aaa\"}\n",
+    )
+    .expect("main session should be written");
+    fs::write(
+        subagent_dir.join("agent-a5256901.jsonl"),
+        "{\"display\":\"subagent\",\"pastedContents\":{},\"timestamp\":1776651201000,\"project\":\"/Users/REDACTED/workspace/acme/.claude/worktrees/agent-a5256901\",\"sessionId\":\"bbb\"}\n",
+    )
+    .expect("subagent session should be written");
+
+    let adapter = ClaudeCodeAdapter::new(root.clone());
+    let sessions = adapter.discover_sessions().expect("discover should succeed");
+
+    assert_eq!(sessions.len(), 1);
+    assert!(sessions[0].ends_with("main.jsonl"));
+    let _ = fs::remove_dir_all(root);
+}

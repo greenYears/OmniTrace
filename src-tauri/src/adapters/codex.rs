@@ -6,7 +6,9 @@ use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, SecondsFormat};
 use serde_json::Value;
 
-use crate::adapters::{discover_jsonl_sessions, SessionAdapter};
+use crate::adapters::{
+    discover_jsonl_sessions, normalize_project_path, project_display_name, SessionAdapter,
+};
 use crate::domain::models::{MessageRecord, NormalizedSession, ProjectRecord};
 
 #[derive(Debug, Clone)]
@@ -113,14 +115,9 @@ impl SessionAdapter for CodexAdapter {
                     }
                     if project_path.is_none() {
                         if let Some(cwd) = Self::extract_string(&payload, &["cwd"]) {
-                            project_path = Some(cwd.clone());
-                            project_name = Some(
-                                Path::new(&cwd)
-                                    .file_name()
-                                    .and_then(|n| n.to_str())
-                                    .unwrap_or("Unknown Project")
-                                    .to_string(),
-                            );
+                            let normalized = normalize_project_path(&cwd);
+                            project_name = Some(project_display_name(&normalized));
+                            project_path = Some(normalized);
                         }
                     }
                     if started_at.is_none() {

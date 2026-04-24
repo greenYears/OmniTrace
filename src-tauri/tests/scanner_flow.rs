@@ -75,14 +75,14 @@ fn scan_and_upsert_real_history_layout_end_to_end() {
     fs::write(
         home.join(".claude/history.jsonl"),
         concat!(
-            "{\"display\":\"/help\",\"pastedContents\":{},\"timestamp\":1776651200000,\"project\":\"/Users/test/workspace/alpha\",\"sessionId\":\"claude-1\"}\n",
-            "{\"display\":\"/exit\",\"pastedContents\":{},\"timestamp\":1776651203000,\"project\":\"/Users/test/workspace/alpha\",\"sessionId\":\"claude-1\"}\n"
+            "{\"display\":\"/help\",\"pastedContents\":{},\"timestamp\":1776651200000,\"project\":\"/Users/test/workspace/OmniTrace/src-tauri\",\"sessionId\":\"claude-1\"}\n",
+            "{\"display\":\"/exit\",\"pastedContents\":{},\"timestamp\":1776651203000,\"project\":\"/Users/test/workspace/OmniTrace/src-tauri\",\"sessionId\":\"claude-1\"}\n"
         ),
     )
     .expect("claude history should be written");
     fs::write(
         claude_sessions.join("123.json"),
-        "{\"pid\":123,\"sessionId\":\"claude-1\",\"cwd\":\"/Users/test/workspace/alpha\",\"startedAt\":1776651199000,\"version\":\"2.1.114\",\"kind\":\"interactive\",\"entrypoint\":\"cli\"}\n",
+        "{\"pid\":123,\"sessionId\":\"claude-1\",\"cwd\":\"/Users/test/workspace/OmniTrace/src-tauri\",\"startedAt\":1776651199000,\"version\":\"2.1.114\",\"kind\":\"interactive\",\"entrypoint\":\"cli\"}\n",
     )
     .expect("claude session metadata should be written");
     fs::write(
@@ -94,7 +94,7 @@ fn scan_and_upsert_real_history_layout_end_to_end() {
             "    {\n",
             "      \"sessionId\": \"claude-1\",\n",
             "      \"fullPath\": \"/tmp/omnitrace-should-not-be-used.jsonl\",\n",
-            "      \"projectPath\": \"/Users/test/workspace/alpha\"\n",
+            "      \"projectPath\": \"/Users/test/workspace/OmniTrace/src-tauri\"\n",
             "    }\n",
             "  ]\n",
             "}\n"
@@ -141,7 +141,8 @@ fn scan_and_upsert_real_history_layout_end_to_end() {
     assert_eq!(result.sessions[0].project.display_name, "bravo");
     assert_eq!(result.sessions[0].raw_ref, codex_session_path.display().to_string());
     assert_eq!(result.sessions[1].source_id, "claude_code");
-    assert_eq!(result.sessions[1].project.display_name, "alpha");
+    assert_eq!(result.sessions[1].project.display_name, "OmniTrace");
+    assert_eq!(result.sessions[1].project.path, "/Users/test/workspace/OmniTrace");
     assert_eq!(
         result.sessions[1].raw_ref,
         claude_projects.join("claude-1.jsonl").display().to_string()

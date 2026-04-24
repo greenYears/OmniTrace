@@ -6,7 +6,9 @@ use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, SecondsFormat, Utc};
 use serde_json::Value;
 
-use crate::adapters::{discover_jsonl_sessions, SessionAdapter};
+use crate::adapters::{
+    discover_jsonl_sessions, normalize_project_path, project_display_name, SessionAdapter,
+};
 use crate::domain::models::{MessageRecord, NormalizedSession, ProjectRecord};
 
 #[derive(Debug, Clone)]
@@ -26,16 +28,13 @@ impl ClaudeCodeAdapter {
             .ok_or_else(|| anyhow!("missing sessionId"))?
             .to_string();
 
-        let project_path = v
+        let project_path = normalize_project_path(
+            v
             .get("project")
             .and_then(|x| x.as_str())
-            .unwrap_or("Unknown Project")
-            .to_string();
-        let project_name = Path::new(&project_path)
-            .file_name()
-            .and_then(|x| x.to_str())
-            .unwrap_or("Unknown Project")
-            .to_string();
+            .unwrap_or("Unknown Project"),
+        );
+        let project_name = project_display_name(&project_path);
 
         let ts_ms = v
             .get("timestamp")
@@ -119,12 +118,11 @@ impl SessionAdapter for ClaudeCodeAdapter {
                 external_id = Some(sid);
             }
             if project_path.is_none() {
-                project_path = Some(
+                project_path = Some(normalize_project_path(
                     v.get("project")
                         .and_then(|x| x.as_str())
-                        .unwrap_or("Unknown Project")
-                        .to_string(),
-                );
+                        .unwrap_or("Unknown Project"),
+                ));
             }
             if project_name.is_none() {
                 project_name = Some(proj_name);

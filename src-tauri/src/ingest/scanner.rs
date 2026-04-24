@@ -10,7 +10,9 @@ use serde_json::Value;
 
 use crate::adapters::claude_code::ClaudeCodeAdapter;
 use crate::adapters::codex::CodexAdapter;
-use crate::adapters::{discover_jsonl_sessions, SessionAdapter};
+use crate::adapters::{
+    discover_jsonl_sessions, normalize_project_path, project_display_name, SessionAdapter,
+};
 use crate::domain::detail::extract_model_id;
 use crate::domain::models::{MessageRecord, NormalizedSession, ProjectRecord};
 
@@ -295,14 +297,6 @@ fn read_codex_session_meta(root: &Path) -> Result<HashMap<String, CodexSessionMe
     Ok(out)
 }
 
-fn project_display_name(path: &str) -> String {
-    Path::new(path)
-        .file_name()
-        .and_then(|value| value.to_str())
-        .unwrap_or("Unknown Project")
-        .to_string()
-}
-
 fn claude_message_text(entry: &ClaudeHistoryEntry) -> String {
     if let Some(display) = &entry.display {
         if !display.is_empty() {
@@ -405,11 +399,13 @@ fn scan_real_claude_sources(root: &Path) -> Result<Vec<NormalizedSession>> {
         acc.messages.sort_by_key(|(timestamp, _)| *timestamp);
         let meta = meta_by_session.get(&session_id);
         let raw = raw_by_session.get(&session_id);
-        let project_path = acc
+        let project_path = normalize_project_path(
+            &acc
             .project_path
             .or_else(|| raw.and_then(|value| value.project_path.clone()))
             .or_else(|| meta.and_then(|value| value.cwd.clone()))
-            .unwrap_or_else(|| "Unknown Project".to_string());
+            .unwrap_or_else(|| "Unknown Project".to_string()),
+        );
         let project_name = project_display_name(&project_path);
 
         let started_at_ms = match meta
@@ -506,10 +502,12 @@ fn scan_real_codex_sources(root: &Path) -> Result<Vec<NormalizedSession>> {
         let started_at = rfc3339_seconds(started_at_s)?;
         let ended_at = rfc3339_seconds(ended_at_s)?;
         let index = index_by_session.get(&session_id);
-        let project_path = index
+        let project_path = normalize_project_path(
+            &index
             .and_then(|entry| entry.cwd.clone())
             .or_else(|| meta_by_session.get(&session_id).and_then(|meta| meta.cwd.clone()))
-            .unwrap_or_else(|| "Unknown Project".to_string());
+            .unwrap_or_else(|| "Unknown Project".to_string()),
+        );
         let project_name = project_display_name(&project_path);
         let title_suffix = index
             .and_then(|entry| entry.thread_name.clone())
