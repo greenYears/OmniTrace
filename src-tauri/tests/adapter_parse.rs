@@ -17,7 +17,9 @@ fn temp_path(name: &str) -> PathBuf {
 #[test]
 fn parses_claude_code_fixture_session() {
     let adapter = ClaudeCodeAdapter::new(PathBuf::from("tests/fixtures/claude_code"));
-    let sessions = adapter.discover_sessions().expect("discover should succeed");
+    let sessions = adapter
+        .discover_sessions()
+        .expect("discover should succeed");
     assert_eq!(sessions.len(), 1);
 
     let s = adapter
@@ -40,7 +42,9 @@ fn parses_claude_code_fixture_session() {
 #[test]
 fn parses_codex_fixture_session() {
     let adapter = CodexAdapter::new(PathBuf::from("tests/fixtures/codex"));
-    let sessions = adapter.discover_sessions().expect("discover should succeed");
+    let sessions = adapter
+        .discover_sessions()
+        .expect("discover should succeed");
     assert_eq!(sessions.len(), 1);
 
     let s = adapter
@@ -49,7 +53,10 @@ fn parses_codex_fixture_session() {
 
     assert_eq!(s.source_id, "codex");
     assert_eq!(s.project.display_name, "codex-project");
-    assert_eq!(s.project.path, "/Users/REDACTED/workspace/acme/codex-project");
+    assert_eq!(
+        s.project.path,
+        "/Users/REDACTED/workspace/acme/codex-project"
+    );
     assert_eq!(s.title, "codex-project");
     assert_eq!(s.started_at, "2026-04-20T05:13:20Z");
     assert_eq!(s.ended_at, "2026-04-20T05:16:23Z");
@@ -76,7 +83,9 @@ fn rejects_mixed_session_ids_inside_one_claude_file() {
     .expect("fixture file should be written");
 
     let adapter = ClaudeCodeAdapter::new(root.clone());
-    let err = adapter.parse_session(&file).expect_err("mixed session ids must fail");
+    let err = adapter
+        .parse_session(&file)
+        .expect_err("mixed session ids must fail");
 
     assert!(err.to_string().contains("mismatched sessionId"));
     let _ = fs::remove_dir_all(root);
@@ -147,7 +156,9 @@ fn discover_sessions_skips_symlink_directories() {
     symlink(Path::new(&root), &loop_dir).expect("symlink should be created");
 
     let adapter = ClaudeCodeAdapter::new(root.clone());
-    let sessions = adapter.discover_sessions().expect("discover should succeed");
+    let sessions = adapter
+        .discover_sessions()
+        .expect("discover should succeed");
 
     assert_eq!(sessions.len(), 1);
     assert!(sessions[0].ends_with("sample.jsonl"));
@@ -172,7 +183,9 @@ fn discover_sessions_skips_claude_subagent_directories() {
     .expect("subagent session should be written");
 
     let adapter = ClaudeCodeAdapter::new(root.clone());
-    let sessions = adapter.discover_sessions().expect("discover should succeed");
+    let sessions = adapter
+        .discover_sessions()
+        .expect("discover should succeed");
 
     assert_eq!(sessions.len(), 1);
     assert!(sessions[0].ends_with("main.jsonl"));

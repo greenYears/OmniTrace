@@ -53,7 +53,9 @@ fn scan_and_upsert_fixture_sessions_end_to_end() {
     assert_eq!(project_count, 2);
 
     let fk_check: String = conn
-        .query_row("PRAGMA foreign_key_check;", [], |_row| Ok(String::from("violated")))
+        .query_row("PRAGMA foreign_key_check;", [], |_row| {
+            Ok(String::from("violated"))
+        })
         .optional()
         .expect("foreign key check should succeed")
         .unwrap_or_else(|| String::from("ok"));
@@ -139,10 +141,16 @@ fn scan_and_upsert_real_history_layout_end_to_end() {
     assert_eq!(result.sessions[0].source_id, "codex");
     assert_eq!(result.sessions[0].title, "bravo");
     assert_eq!(result.sessions[0].project.display_name, "bravo");
-    assert_eq!(result.sessions[0].raw_ref, codex_session_path.display().to_string());
+    assert_eq!(
+        result.sessions[0].raw_ref,
+        codex_session_path.display().to_string()
+    );
     assert_eq!(result.sessions[1].source_id, "claude_code");
     assert_eq!(result.sessions[1].project.display_name, "OmniTrace");
-    assert_eq!(result.sessions[1].project.path, "/Users/test/workspace/OmniTrace");
+    assert_eq!(
+        result.sessions[1].project.path,
+        "/Users/test/workspace/OmniTrace"
+    );
     assert_eq!(
         result.sessions[1].raw_ref,
         claude_projects.join("claude-1.jsonl").display().to_string()

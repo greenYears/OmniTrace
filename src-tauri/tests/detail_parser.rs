@@ -63,7 +63,10 @@ fn parse_codex_detail_messages_includes_assistant_and_file_summary() {
         })
         .expect("file summary for modified files should exist");
     assert_eq!(file_summary.role, "tool");
-    assert!(file_summary.file_paths.iter().any(|path| path == "src/App.tsx"));
+    assert!(file_summary
+        .file_paths
+        .iter()
+        .any(|path| path == "src/App.tsx"));
     assert!(file_summary
         .file_paths
         .iter()
@@ -85,8 +88,7 @@ fn parse_claude_detail_messages_includes_assistant_and_tool_summary() {
     )
     .expect("claude detail fixture should be written");
 
-    let messages =
-        parse_detail_messages("claude_code", &path).expect("claude detail should parse");
+    let messages = parse_detail_messages("claude_code", &path).expect("claude detail should parse");
 
     assert!(
         messages.iter().any(|message| {
@@ -101,8 +103,14 @@ fn parse_claude_detail_messages_includes_assistant_and_tool_summary() {
     assert_eq!(tool_call.tool_name.as_deref(), Some("Read"));
 
     let file_summary = find_by_kind(&messages, "file_summary");
-    assert!(file_summary.file_paths.iter().any(|path| path == "src/App.tsx"));
-    assert!(file_summary.file_paths.iter().any(|path| path == "src/styles.css"));
+    assert!(file_summary
+        .file_paths
+        .iter()
+        .any(|path| path == "src/App.tsx"));
+    assert!(file_summary
+        .file_paths
+        .iter()
+        .any(|path| path == "src/styles.css"));
 
     let _ = fs::remove_file(path);
 }
@@ -123,20 +131,24 @@ fn parse_claude_detail_messages_keeps_real_user_prompts_and_skips_meta_noise() {
     )
     .expect("claude user filter fixture should be written");
 
-    let messages =
-        parse_detail_messages("claude_code", &path).expect("claude detail should parse");
+    let messages = parse_detail_messages("claude_code", &path).expect("claude detail should parse");
 
     let user_messages = messages
         .iter()
         .filter(|message| message.role == "user" && message.kind == "message")
         .collect::<Vec<_>>();
     assert_eq!(user_messages.len(), 1);
-    assert_eq!(user_messages[0].content_text, "请优化一下页面的布局和排版，以及色彩。");
+    assert_eq!(
+        user_messages[0].content_text,
+        "请优化一下页面的布局和排版，以及色彩。"
+    );
 
     assert!(
-        messages
-            .iter()
-            .any(|message| message.kind == "file_summary" && message.file_paths.iter().any(|path| path == "/Users/test/workspace/OmniTrace/AGENTS.md")),
+        messages.iter().any(|message| message.kind == "file_summary"
+            && message
+                .file_paths
+                .iter()
+                .any(|path| path == "/Users/test/workspace/OmniTrace/AGENTS.md")),
         "tool result should still produce file summary"
     );
 
@@ -157,8 +169,7 @@ fn parse_claude_detail_messages_compresses_file_history_snapshots() {
     )
     .expect("claude snapshot fixture should be written");
 
-    let messages =
-        parse_detail_messages("claude_code", &path).expect("claude detail should parse");
+    let messages = parse_detail_messages("claude_code", &path).expect("claude detail should parse");
 
     let file_summaries = messages
         .iter()
@@ -202,11 +213,15 @@ fn parse_codex_detail_messages_keeps_real_prompts_and_skips_bootstrap_noise() {
     assert_eq!(user_messages[1].content_text, "真正的用户问题");
 
     assert!(
-        !messages.iter().any(|message| message.content_text.contains("AGENTS.md instructions")),
+        !messages
+            .iter()
+            .any(|message| message.content_text.contains("AGENTS.md instructions")),
         "bootstrap user payload should be skipped"
     );
     assert!(
-        !messages.iter().any(|message| message.content_text.contains("permissions instructions")),
+        !messages
+            .iter()
+            .any(|message| message.content_text.contains("permissions instructions")),
         "developer payload should be skipped"
     );
 

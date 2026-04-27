@@ -7,8 +7,9 @@ use serde::Serialize;
 
 use crate::db;
 use crate::domain::detail::{parse_detail_messages, DetailMessageRecord};
-use crate::ingest::scanner::ScanResult;
 use crate::ingest::scanner::scan_home_sources;
+use crate::ingest::scanner::ScanResult;
+use crate::ingest::token_probe::{probe_token_usage, TokenUsageProbeReport};
 use crate::ingest::upsert::{initialize_database, upsert_sessions};
 
 static SCAN_CACHE: LazyLock<Mutex<Option<ScanResult>>> = LazyLock::new(|| Mutex::new(None));
@@ -68,7 +69,9 @@ fn resolve_home_root() -> Result<std::path::PathBuf, String> {
 }
 
 fn load_scan_result(force_refresh: bool) -> Result<ScanResult, String> {
-    let mut cache = SCAN_CACHE.lock().map_err(|_| "scan cache poisoned".to_string())?;
+    let mut cache = SCAN_CACHE
+        .lock()
+        .map_err(|_| "scan cache poisoned".to_string())?;
     if force_refresh || cache.is_none() {
         let result = scan_home_sources(resolve_home_root()?).map_err(|e| e.to_string())?;
         *cache = Some(result.clone());
@@ -142,10 +145,7 @@ ORDER BY s.updated_at DESC, s.source_id ASC, s.external_id ASC
         .map_err(|e| e.to_string())
 }
 
-fn load_session_detail(
-    conn: &Connection,
-    id: &str,
-) -> Result<Option<SessionDetailDto>, String> {
+fn load_session_detail(conn: &Connection, id: &str) -> Result<Option<SessionDetailDto>, String> {
     #[derive(Debug, Clone)]
     struct SessionRow {
         id: String,
@@ -225,14 +225,15 @@ WHERE s.id = ?1
         None
     };
 
-    let messages = if let Some(parsed_messages) = parsed_messages.filter(|messages| !messages.is_empty()) {
-        parsed_messages
-            .into_iter()
-            .map(|message| map_detail_record(&session.id, message))
-            .collect::<Vec<_>>()
-    } else {
-        load_db_session_messages(conn, id)?
-    };
+    let messages =
+        if let Some(parsed_messages) = parsed_messages.filter(|messages| !messages.is_empty()) {
+            parsed_messages
+                .into_iter()
+                .map(|message| map_detail_record(&session.id, message))
+                .collect::<Vec<_>>()
+        } else {
+            load_db_session_messages(conn, id)?
+        };
 
     let detail = SessionDetailDto {
         id: session.id,
@@ -277,7 +278,8 @@ ORDER BY seq_no ASC
     let rows = stmt
         .query_map([id], |row| {
             let metadata_json: String = row.get(4)?;
-            let metadata = serde_json::from_str::<MessageMetadata>(&metadata_json).unwrap_or_default();
+            let metadata =
+                serde_json::from_str::<MessageMetadata>(&metadata_json).unwrap_or_default();
             Ok(SessionMessageDto {
                 id: row.get(0)?,
                 role: row.get(1)?,
@@ -290,8 +292,7 @@ ORDER BY seq_no ASC
         })
         .map_err(|e| e.to_string())?;
 
-    rows
-        .collect::<Result<Vec<_>, _>>()
+    rows.collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())
 }
 
@@ -320,15 +321,18 @@ pub fn get_session_detail(id: String) -> Result<Option<SessionDetailDto>, String
 }
 
 #[tauri::command]
+pub fn probe_token_usage_sources() -> Result<TokenUsageProbeReport, String> {
+    probe_token_usage(&resolve_home_root()?).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn delete_session(id: String) -> Result<(), String> {
     let conn = open_history_database(false)?;
 
     let raw_ref: Option<String> = conn
-        .query_row(
-            "SELECT raw_ref FROM sessions WHERE id = ?1",
-            [&id],
-            |row| row.get(0),
-        )
+        .query_row("SELECT raw_ref FROM sessions WHERE id = ?1", [&id], |row| {
+            row.get(0)
+        })
         .optional()
         .map_err(|e| e.to_string())?;
 
@@ -343,7 +347,9 @@ pub fn delete_session(id: String) -> Result<(), String> {
     conn.execute("DELETE FROM sessions WHERE id = ?1", [&id])
         .map_err(|e| e.to_string())?;
 
-    let mut cache = SCAN_CACHE.lock().map_err(|_| "scan cache poisoned".to_string())?;
+    let mut cache = SCAN_CACHE
+        .lock()
+        .map_err(|_| "scan cache poisoned".to_string())?;
     *cache = None;
 
     Ok(())

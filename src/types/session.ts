@@ -32,3 +32,37 @@ export type SessionDetail = SessionListItem & {
   endedAt: string;
   messages: SessionMessage[];
 };
+
+export type TokenUsageBucket = {
+  date: string;
+  sourceId: string;
+  modelId: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationTokens: number;
+  cacheReadTokens: number;
+  cacheTokens: number;
+  reasoningTokens: number;
+  totalTokens: number;
+  recordsWithUsage: number;
+};
+
+export type TokenUsageSample = {
+  sourceId: string;
+  modelId: string;
+  date: string;
+  path: string;
+  rawUsageJson: string;
+};
+
+export type TokenUsageProbeReport = {
+  filesScanned: number;
+  recordsScanned: number;
+  recordsWithUsage: number;
+  days: TokenUsageBucket[];
+  hours: TokenUsageBucket[];
+  byModel: TokenUsageBucket[];
+  byModelByDay: TokenUsageBucket[];
+  byModelByHour: TokenUsageBucket[];
+  samples: TokenUsageSample[];
+};

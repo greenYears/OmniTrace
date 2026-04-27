@@ -31,7 +31,9 @@ impl CodexAdapter {
             return Ok(raw.to_string());
         }
 
-        let ts_secs = raw.parse::<i64>().map_err(|_| anyhow!("not a number: {raw}"))?;
+        let ts_secs = raw
+            .parse::<i64>()
+            .map_err(|_| anyhow!("not a number: {raw}"))?;
         let dt = DateTime::from_timestamp(ts_secs, 0)
             .ok_or_else(|| anyhow!("invalid timestamp: {raw}"))?;
         Ok(dt.to_rfc3339_opts(SecondsFormat::Millis, true))
@@ -62,7 +64,9 @@ impl CodexAdapter {
             .filter_map(|item| {
                 let item_type = item.get("type").and_then(|t| t.as_str()).unwrap_or("");
                 if matches!(item_type, "input_text" | "output_text" | "text") {
-                    item.get("text").and_then(|t| t.as_str()).map(|s| s.to_string())
+                    item.get("text")
+                        .and_then(|t| t.as_str())
+                        .map(|s| s.to_string())
                 } else {
                     None
                 }
@@ -178,15 +182,16 @@ impl SessionAdapter for CodexAdapter {
                                 content_text: args.to_string(),
                                 created_at: created_at.unwrap_or_default(),
                                 seq_no,
-                                metadata_json: format!(r#"{{"tool_name":"{}","kind":"tool_call"}}"#, tool_name),
+                                metadata_json: format!(
+                                    r#"{{"tool_name":"{}","kind":"tool_call"}}"#,
+                                    tool_name
+                                ),
                             });
                             seq_no += 1;
                         }
                         "function_call_output" | "custom_tool_call_output" => {
-                            let output = payload
-                                .get("output")
-                                .and_then(|o| o.as_str())
-                                .unwrap_or("");
+                            let output =
+                                payload.get("output").and_then(|o| o.as_str()).unwrap_or("");
                             if output.is_empty() {
                                 continue;
                             }

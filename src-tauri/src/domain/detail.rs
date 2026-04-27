@@ -103,7 +103,10 @@ fn parse_codex_detail_messages(path: &Path) -> Result<Vec<DetailMessageRecord>> 
 
         match payload_type {
             "message" => {
-                let role = payload.get("role").and_then(|v| v.as_str()).unwrap_or("assistant");
+                let role = payload
+                    .get("role")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("assistant");
                 let content_text = match role {
                     "developer" => None,
                     "user" => extract_codex_user_prompt(payload),
@@ -134,12 +137,13 @@ fn parse_codex_detail_messages(path: &Path) -> Result<Vec<DetailMessageRecord>> 
                     .and_then(|v| v.as_str())
                     .unwrap_or("tool")
                     .to_string();
-                let file_paths = extract_file_paths_from_value(payload.get("arguments").unwrap_or(&Value::Null))
-                    .into_iter()
-                    .chain(extract_file_paths_from_value(
-                        payload.get("input").unwrap_or(&Value::Null),
-                    ))
-                    .collect::<Vec<_>>();
+                let file_paths =
+                    extract_file_paths_from_value(payload.get("arguments").unwrap_or(&Value::Null))
+                        .into_iter()
+                        .chain(extract_file_paths_from_value(
+                            payload.get("input").unwrap_or(&Value::Null),
+                        ))
+                        .collect::<Vec<_>>();
 
                 if let Some(call_id) = payload.get("call_id").and_then(|v| v.as_str()) {
                     tools_by_call_id.insert(
@@ -167,7 +171,8 @@ fn parse_codex_detail_messages(path: &Path) -> Result<Vec<DetailMessageRecord>> 
                     .and_then(|v| v.as_str())
                     .and_then(|call_id| tools_by_call_id.get(call_id))
                     .map(|tool| tool.name.clone());
-                let file_paths = extract_file_paths_from_value(payload.get("output").unwrap_or(&Value::Null));
+                let file_paths =
+                    extract_file_paths_from_value(payload.get("output").unwrap_or(&Value::Null));
 
                 if !file_paths.is_empty() {
                     push_detail_message(
@@ -261,8 +266,9 @@ fn parse_claude_detail_messages(path: &Path) -> Result<Vec<DetailMessageRecord>>
                             .and_then(|v| v.as_str())
                             .unwrap_or("tool")
                             .to_string();
-                        let file_paths =
-                            extract_file_paths_from_value(item.get("input").unwrap_or(&Value::Null));
+                        let file_paths = extract_file_paths_from_value(
+                            item.get("input").unwrap_or(&Value::Null),
+                        );
 
                         if let Some(call_id) = item.get("id").and_then(|v| v.as_str()) {
                             tools_by_call_id.insert(
@@ -326,15 +332,19 @@ fn parse_claude_detail_messages(path: &Path) -> Result<Vec<DetailMessageRecord>>
 
                 let current_files = sorted_paths(
                     value
-                    .get("snapshot")
-                    .and_then(|snapshot| snapshot.get("trackedFileBackups"))
-                    .and_then(|files| files.as_object())
-                    .map(|map| map.keys().cloned().collect::<Vec<_>>())
-                    .unwrap_or_default(),
+                        .get("snapshot")
+                        .and_then(|snapshot| snapshot.get("trackedFileBackups"))
+                        .and_then(|files| files.as_object())
+                        .map(|map| map.keys().cloned().collect::<Vec<_>>())
+                        .unwrap_or_default(),
                 );
                 let file_paths = current_files
                     .iter()
-                    .filter(|path| !previous_snapshot_files.iter().any(|previous| previous == *path))
+                    .filter(|path| {
+                        !previous_snapshot_files
+                            .iter()
+                            .any(|previous| previous == *path)
+                    })
                     .cloned()
                     .collect::<Vec<_>>();
                 previous_snapshot_files = current_files;
