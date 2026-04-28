@@ -367,6 +367,113 @@ fn parse_claude_detail_messages(path: &Path) -> Result<Vec<DetailMessageRecord>>
                     );
                 }
             }
+            "attachment" => {
+                let attachment = value.get("attachment").unwrap_or(&Value::Null);
+                match attachment.get("type").and_then(|v| v.as_str()).unwrap_or("") {
+                    "selected_lines_in_ide" => {
+                        let ide_name = attachment
+                            .get("ideName")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("IDE");
+                        let line_start = attachment
+                            .get("lineStart")
+                            .and_then(|v| v.as_i64())
+                            .unwrap_or_default();
+                        let line_end = attachment
+                            .get("lineEnd")
+                            .and_then(|v| v.as_i64())
+                            .unwrap_or(line_start);
+                        let line_count = if line_start > 0 && line_end >= line_start {
+                            line_end - line_start + 1
+                        } else {
+                            0
+                        };
+                        let display_path = attachment
+                            .get("displayPath")
+                            .and_then(|v| v.as_str())
+                            .or_else(|| attachment.get("filename").and_then(|v| v.as_str()))
+                            .unwrap_or("unknown file");
+                        let content = attachment
+                            .get("content")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .trim();
+                        if content.is_empty() {
+                            continue;
+                        }
+
+                        push_detail_message(
+                            &mut messages,
+                            &mut seq_no,
+                            "system".to_string(),
+                            "selection_context".to_string(),
+                            format!(
+                                "Selected {} lines from {} in {}\n{}",
+                                line_count.max(1),
+                                display_path,
+                                ide_name,
+                                content
+                            ),
+                            created_at,
+                            Some(ide_name.to_string()),
+                            vec![display_path.to_string()],
+                        );
+                    }
+                    "file" => {
+                        let display_path = attachment
+                            .get("displayPath")
+                            .and_then(|v| v.as_str())
+                            .or_else(|| attachment.get("filename").and_then(|v| v.as_str()))
+                            .unwrap_or("unknown file");
+                        let file = attachment
+                            .get("content")
+                            .and_then(|content| content.get("file"))
+                            .unwrap_or(&Value::Null);
+                        let content = file
+                            .get("content")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .trim();
+                        let num_lines = file
+                            .get("numLines")
+                            .and_then(|v| v.as_i64())
+                            .unwrap_or_else(|| content.lines().count() as i64);
+                        if content.is_empty() {
+                            continue;
+                        }
+
+                        push_detail_message(
+                            &mut messages,
+                            &mut seq_no,
+                            "system".to_string(),
+                            "file_context".to_string(),
+                            format!("Read {} ({} lines)\n{}", display_path, num_lines, content),
+                            created_at,
+                            None,
+                            vec![display_path.to_string()],
+                        );
+                    }
+                    "nested_memory" => {
+                        let display_path = attachment
+                            .get("displayPath")
+                            .and_then(|v| v.as_str())
+                            .or_else(|| attachment.get("path").and_then(|v| v.as_str()))
+                            .unwrap_or("CLAUDE.md");
+
+                        push_detail_message(
+                            &mut messages,
+                            &mut seq_no,
+                            "system".to_string(),
+                            "memory_context".to_string(),
+                            format!("Loaded {}", display_path),
+                            created_at,
+                            None,
+                            vec![display_path.to_string()],
+                        );
+                    }
+                    _ => {}
+                }
+            }
             _ => {}
         }
     }

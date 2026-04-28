@@ -156,6 +156,60 @@ fn parse_claude_detail_messages_keeps_real_user_prompts_and_skips_meta_noise() {
 }
 
 #[test]
+fn parse_claude_detail_messages_includes_selected_lines_attachment() {
+    let path = temp_path("claude-selected-lines");
+    fs::write(
+        &path,
+        concat!(
+            "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"还是加一个判断吧\"},\"uuid\":\"user-1\",\"timestamp\":\"2026-04-21T01:38:21.514Z\",\"sessionId\":\"claude-1\"}\n",
+            "{\"parentUuid\":\"user-1\",\"attachment\":{\"type\":\"selected_lines_in_ide\",\"ideName\":\"IntelliJ IDEA\",\"lineStart\":58,\"lineEnd\":58,\"filename\":\"/Users/test/project/src/Handler.java\",\"content\":\"stepDays\",\"displayPath\":\"src/Handler.java\"},\"type\":\"attachment\",\"uuid\":\"attach-1\",\"timestamp\":\"2026-04-21T01:38:21.515Z\",\"sessionId\":\"claude-1\"}\n"
+        ),
+    )
+    .expect("claude selected lines fixture should be written");
+
+    let messages = parse_detail_messages("claude_code", &path).expect("claude detail should parse");
+
+    let selection = find_by_kind(&messages, "selection_context");
+    assert_eq!(selection.role, "system");
+    assert_eq!(selection.tool_name.as_deref(), Some("IntelliJ IDEA"));
+    assert!(selection.content_text.contains("Selected 1 lines"));
+    assert!(selection.content_text.contains("src/Handler.java"));
+    assert!(selection.content_text.contains("stepDays"));
+    assert_eq!(selection.file_paths, vec!["src/Handler.java"]);
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn parse_claude_detail_messages_includes_file_reference_attachments() {
+    let path = temp_path("claude-file-reference");
+    fs::write(
+        &path,
+        concat!(
+            "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"@src/Handler.java#L101-122 请解释 stepDays\"},\"uuid\":\"user-1\",\"timestamp\":\"2026-04-21T01:38:21.514Z\",\"sessionId\":\"claude-1\"}\n",
+            "{\"parentUuid\":\"user-1\",\"attachment\":{\"type\":\"file\",\"filename\":\"/Users/test/project/src/Handler.java\",\"content\":{\"type\":\"text\",\"file\":{\"filePath\":\"/Users/test/project/src/Handler.java\",\"content\":\"LocalDate cursorStart = param.getStartDate();\\nint windowCount = 0;\",\"numLines\":22,\"startLine\":101,\"totalLines\":134}},\"displayPath\":\"src/Handler.java\"},\"type\":\"attachment\",\"uuid\":\"attach-file\",\"timestamp\":\"2026-04-21T01:38:21.515Z\",\"sessionId\":\"claude-1\"}\n",
+            "{\"parentUuid\":\"attach-file\",\"attachment\":{\"type\":\"nested_memory\",\"path\":\"/Users/test/project/CLAUDE.md\",\"content\":{\"path\":\"/Users/test/project/CLAUDE.md\",\"type\":\"Project\",\"content\":\"# Project Guide\"},\"displayPath\":\"CLAUDE.md\"},\"type\":\"attachment\",\"uuid\":\"attach-memory\",\"timestamp\":\"2026-04-21T01:38:21.516Z\",\"sessionId\":\"claude-1\"}\n"
+        ),
+    )
+    .expect("claude file reference fixture should be written");
+
+    let messages = parse_detail_messages("claude_code", &path).expect("claude detail should parse");
+
+    let file_context = find_by_kind(&messages, "file_context");
+    assert_eq!(file_context.role, "system");
+    assert!(file_context.content_text.contains("Read src/Handler.java (22 lines)"));
+    assert!(file_context.content_text.contains("LocalDate cursorStart"));
+    assert_eq!(file_context.file_paths, vec!["src/Handler.java"]);
+
+    let memory_context = find_by_kind(&messages, "memory_context");
+    assert_eq!(memory_context.role, "system");
+    assert_eq!(memory_context.content_text, "Loaded CLAUDE.md");
+    assert_eq!(memory_context.file_paths, vec!["CLAUDE.md"]);
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
 fn parse_claude_detail_messages_compresses_file_history_snapshots() {
     let path = temp_path("claude-snapshot-compress");
     fs::write(

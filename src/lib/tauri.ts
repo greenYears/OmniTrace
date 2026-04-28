@@ -87,7 +87,10 @@ function mapMessageKind(kind: string): SessionMessage["kind"] {
     kind === "message" ||
     kind === "tool_call" ||
     kind === "tool_result" ||
-    kind === "file_summary"
+    kind === "file_summary" ||
+    kind === "selection_context" ||
+    kind === "file_context" ||
+    kind === "memory_context"
   ) {
     return kind;
   }

@@ -19,7 +19,14 @@ export type SessionListItem = {
 export type SessionMessage = {
   id: string;
   role: "user" | "assistant" | "system" | "tool";
-  kind: "message" | "tool_call" | "tool_result" | "file_summary";
+  kind:
+    | "message"
+    | "tool_call"
+    | "tool_result"
+    | "file_summary"
+    | "selection_context"
+    | "file_context"
+    | "memory_context";
   contentText: string;
   createdAt: string;
   toolName?: string;

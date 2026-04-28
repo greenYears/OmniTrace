@@ -103,7 +103,109 @@ function CollapsibleContent({ text, className, markdown }: { text: string; class
   );
 }
 
-function UserMessage({ msg, isLatest, className }: { msg: SessionMessage; isLatest?: boolean; className?: string }) {
+function MessageToolAttachment({ tools }: { tools: SessionMessage[] }) {
+  const [open, setOpen] = useState(false);
+  if (tools.length === 0) return null;
+
+  return (
+    <div className="msg-tool-attachment">
+      <button
+        type="button"
+        className="msg-tool-attachment-toggle"
+        aria-label={`工具调用 ${tools.length}`}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <Chevron open={open} />
+        <span>工具调用 {tools.length}</span>
+      </button>
+      {open && (
+        <div className="msg-tool-attachment-body">
+          {tools.map((tool) => (
+            <ToolMessage key={tool.id} msg={tool} embedded />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SelectionContext({ context }: { context: SessionMessage }) {
+  const [open, setOpen] = useState(false);
+  const [summary, ...contentLines] = context.contentText.trim().split("\n");
+  const content = contentLines.join("\n").trim();
+  const label = context.kind === "file_context"
+    ? "文件上下文"
+    : context.kind === "memory_context"
+      ? "项目记忆"
+      : "选区上下文";
+
+  return (
+    <div className="msg-selection-context">
+      <button
+        type="button"
+        className="msg-selection-context-header"
+        onClick={() => content && setOpen((current) => !current)}
+      >
+        {content && <Chevron open={open} />}
+        <span className="msg-selection-context-label">{label}</span>
+        <span className="msg-selection-context-summary">{summary}</span>
+      </button>
+      {open && content && <pre className="msg-selection-context-content">{content}</pre>}
+    </div>
+  );
+}
+
+function MessageSelectionContexts({ contexts }: { contexts: SessionMessage[] }) {
+  if (contexts.length === 0) return null;
+
+  return (
+    <div className="msg-selection-contexts">
+      {contexts.map((context) => (
+        <SelectionContext key={context.id} context={context} />
+      ))}
+    </div>
+  );
+}
+
+function ToolActionBlock({
+  tools,
+  sourceMeta,
+  className,
+}: {
+  tools: SessionMessage[];
+  sourceMeta: SourceMeta;
+  className?: string;
+}) {
+  if (tools.length === 0) return null;
+
+  return (
+    <div className={clsx("msg-card msg-tool-action-card", className)}>
+      <div className="msg-block msg-tool-action">
+        <div className="msg-tool-action-header">
+          <div className={clsx("msg-source-icon", sourceMeta.iconClass)} aria-hidden="true">
+            <img src={sourceMeta.iconSrc} alt="" width="10" height="10" />
+          </div>
+          <span className="msg-source-label">{sourceMeta.label} 执行动作</span>
+        </div>
+        <MessageToolAttachment tools={tools} />
+      </div>
+    </div>
+  );
+}
+
+function UserMessage({
+  msg,
+  contexts,
+  tools,
+  isLatest,
+  className,
+}: {
+  msg: SessionMessage;
+  contexts?: SessionMessage[];
+  tools?: SessionMessage[];
+  isLatest?: boolean;
+  className?: string;
+}) {
   const text = msg.contentText.trim();
   if (!text) return null;
   return (
@@ -115,6 +217,8 @@ function UserMessage({ msg, isLatest, className }: { msg: SessionMessage; isLate
           {isLatest && <span className="msg-latest-badge">最新</span>}
         </div>
         <CollapsibleContent text={text} markdown />
+        <MessageSelectionContexts contexts={contexts ?? []} />
+        <MessageToolAttachment tools={tools ?? []} />
       </div>
     </div>
   );
@@ -122,11 +226,13 @@ function UserMessage({ msg, isLatest, className }: { msg: SessionMessage; isLate
 
 function AssistantMessage({
   msg,
+  tools,
   sourceMeta,
   isLatest,
   className,
 }: {
   msg: SessionMessage;
+  tools?: SessionMessage[];
   sourceMeta: SourceMeta;
   isLatest?: boolean;
   className?: string;
@@ -144,6 +250,7 @@ function AssistantMessage({
           {isLatest && <span className="msg-latest-badge">最新</span>}
         </div>
         <CollapsibleContent text={text} markdown />
+        <MessageToolAttachment tools={tools ?? []} />
       </div>
     </div>
   );
@@ -154,7 +261,17 @@ function basename(p: string) {
   return segs[segs.length - 1] || p;
 }
 
-function ToolMessage({ msg, isLatest, className }: { msg: SessionMessage; isLatest?: boolean; className?: string }) {
+function ToolMessage({
+  msg,
+  isLatest,
+  className,
+  embedded = false,
+}: {
+  msg: SessionMessage;
+  isLatest?: boolean;
+  className?: string;
+  embedded?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const hasContent = msg.contentText.trim().length > 0;
   const label = msg.toolName || "工具";
@@ -163,7 +280,7 @@ function ToolMessage({ msg, isLatest, className }: { msg: SessionMessage; isLate
     : msg.kind.replace(/_/g, " ");
 
   return (
-    <div className={clsx("msg-card msg-tool-card", isLatest && "is-latest", className)}>
+    <div className={clsx("msg-card msg-tool-card", embedded && "is-embedded", isLatest && "is-latest", className)}>
       <div className="msg-block msg-tool">
         <button
           type="button"
@@ -192,24 +309,8 @@ function ToolMessage({ msg, isLatest, className }: { msg: SessionMessage; isLate
   );
 }
 
-function getLastRenderableMessageId(messages: SessionMessage[]) {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const msg = messages[index];
-    if (!msg) continue;
-
-    const hasText = msg.contentText.trim().length > 0;
-    const hasFiles = msg.filePaths.length > 0;
-
-    if ((msg.role === "user" || msg.role === "assistant") && hasText) {
-      return msg.id;
-    }
-
-    if (msg.role === "tool" && (hasText || hasFiles)) {
-      return msg.id;
-    }
-  }
-
-  return null;
+function isHiddenToolMessage(msg: SessionMessage) {
+  return msg.role === "tool";
 }
 
 function isRenderableMessage(msg: SessionMessage) {
@@ -224,7 +325,81 @@ function isRenderableMessage(msg: SessionMessage) {
     return hasText || hasFiles;
   }
 
+  if (msg.kind === "selection_context" || msg.kind === "file_context" || msg.kind === "memory_context") {
+    return hasText;
+  }
+
   return false;
+}
+
+type TranscriptItem =
+  | {
+      id: string;
+      kind: "message";
+      msg: SessionMessage;
+      contexts: SessionMessage[];
+      tools: SessionMessage[];
+    }
+  | {
+      id: string;
+      kind: "tools";
+      tools: SessionMessage[];
+    };
+
+function buildTranscriptItems(messages: SessionMessage[]): TranscriptItem[] {
+  const items: TranscriptItem[] = [];
+  let currentMessageItem: Extract<TranscriptItem, { kind: "message" }> | null = null;
+  let currentToolItem: Extract<TranscriptItem, { kind: "tools" }> | null = null;
+
+  for (const msg of messages) {
+    if (msg.kind === "selection_context" || msg.kind === "file_context" || msg.kind === "memory_context") {
+      if (currentMessageItem?.msg.role === "user") {
+        currentMessageItem.contexts.push(msg);
+        continue;
+      }
+    }
+
+    if (isHiddenToolMessage(msg)) {
+      if (currentMessageItem?.msg.role === "assistant") {
+        currentMessageItem.tools.push(msg);
+        continue;
+      }
+
+      if (!currentToolItem) {
+        currentToolItem = {
+          id: `tools:${msg.id}`,
+          kind: "tools",
+          tools: [],
+        };
+        items.push(currentToolItem);
+      }
+      currentToolItem.tools.push(msg);
+      continue;
+    }
+
+    currentMessageItem = {
+      id: msg.id,
+      kind: "message",
+      msg,
+      contexts: [],
+      tools: [],
+    };
+    currentToolItem = null;
+    items.push(currentMessageItem);
+  }
+
+  return items;
+}
+
+function getLastPrimaryMessageId(items: TranscriptItem[]) {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (item?.kind === "message") {
+      return item.msg.id;
+    }
+  }
+
+  return null;
 }
 
 type SessionDetailProps = {
@@ -255,14 +430,15 @@ export function SessionDetail({ detail, isLoading = false, pendingSession = null
   const pendingSourceMeta = pendingSession ? getSourceMeta(pendingSession.sourceId) : null;
   const pendingTitle = pendingSession ? stripTitle(pendingSession.title) : "";
   const renderableMessages = contentDetail ? contentDetail.messages.filter(isRenderableMessage) : [];
-  const lastRenderableMessageId = getLastRenderableMessageId(renderableMessages);
-  const shouldChunk = renderableMessages.length > LONG_TRANSCRIPT_THRESHOLD;
+  const transcriptItems = buildTranscriptItems(renderableMessages);
+  const lastRenderableMessageId = getLastPrimaryMessageId(transcriptItems);
+  const shouldChunk = transcriptItems.length > LONG_TRANSCRIPT_THRESHOLD;
   const initialVisibleStart = shouldChunk
-    ? Math.max(renderableMessages.length - INITIAL_RENDER_COUNT, 0)
+    ? Math.max(transcriptItems.length - INITIAL_RENDER_COUNT, 0)
     : 0;
-  const visibleMessages = shouldChunk
-    ? renderableMessages.slice(visibleStart)
-    : renderableMessages;
+  const visibleItems = shouldChunk
+    ? transcriptItems.slice(visibleStart)
+    : transcriptItems;
 
   useEffect(() => {
     if (detail) {
@@ -350,11 +526,26 @@ export function SessionDetail({ detail, isLoading = false, pendingSession = null
     );
   }
 
-  function renderMessage(msg: SessionMessage, index: number) {
+  function renderTranscriptItem(item: TranscriptItem, index: number) {
+    if (item.kind === "tools") {
+      const shouldStagger = isContentRevealing && index < STAGGER_REVEAL_COUNT;
+      return (
+        <ToolActionBlock
+          key={item.id}
+          tools={item.tools}
+          sourceMeta={sourceMeta!}
+          className={shouldStagger ? "is-stagger-enter" : undefined}
+        />
+      );
+    }
+
+    const { msg, contexts, tools } = item;
     const isLatest = msg.id === lastRenderableMessageId;
     const shouldStagger = isContentRevealing && index < STAGGER_REVEAL_COUNT;
     const messageProps = {
       msg,
+      contexts,
+      tools,
       isLatest,
       className: shouldStagger ? "is-stagger-enter" : undefined,
     };
@@ -364,8 +555,6 @@ export function SessionDetail({ detail, isLoading = false, pendingSession = null
         return <UserMessage key={msg.id} {...messageProps} />;
       case "assistant":
         return <AssistantMessage key={msg.id} {...messageProps} sourceMeta={sourceMeta!} />;
-      case "tool":
-        return <ToolMessage key={msg.id} {...messageProps} />;
       default:
         return null;
     }
@@ -408,7 +597,7 @@ export function SessionDetail({ detail, isLoading = false, pendingSession = null
           </div>
 
           <div className="msg-transcript" aria-label="Messages">
-            {visibleMessages.map((msg, index) => renderMessage(msg, index))}
+            {visibleItems.map((item, index) => renderTranscriptItem(item, index))}
           </div>
         </div>
       ) : (
