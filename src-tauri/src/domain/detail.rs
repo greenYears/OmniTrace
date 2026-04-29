@@ -103,7 +103,10 @@ fn parse_codex_detail_messages(path: &Path) -> Result<Vec<DetailMessageRecord>> 
 
         match payload_type {
             "message" => {
-                let role = payload.get("role").and_then(|v| v.as_str()).unwrap_or("assistant");
+                let role = payload
+                    .get("role")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("assistant");
                 let content_text = match role {
                     "developer" => None,
                     "user" => extract_codex_user_prompt(payload),
@@ -134,12 +137,13 @@ fn parse_codex_detail_messages(path: &Path) -> Result<Vec<DetailMessageRecord>> 
                     .and_then(|v| v.as_str())
                     .unwrap_or("tool")
                     .to_string();
-                let file_paths = extract_file_paths_from_value(payload.get("arguments").unwrap_or(&Value::Null))
-                    .into_iter()
-                    .chain(extract_file_paths_from_value(
-                        payload.get("input").unwrap_or(&Value::Null),
-                    ))
-                    .collect::<Vec<_>>();
+                let file_paths =
+                    extract_file_paths_from_value(payload.get("arguments").unwrap_or(&Value::Null))
+                        .into_iter()
+                        .chain(extract_file_paths_from_value(
+                            payload.get("input").unwrap_or(&Value::Null),
+                        ))
+                        .collect::<Vec<_>>();
 
                 if let Some(call_id) = payload.get("call_id").and_then(|v| v.as_str()) {
                     tools_by_call_id.insert(
@@ -167,7 +171,8 @@ fn parse_codex_detail_messages(path: &Path) -> Result<Vec<DetailMessageRecord>> 
                     .and_then(|v| v.as_str())
                     .and_then(|call_id| tools_by_call_id.get(call_id))
                     .map(|tool| tool.name.clone());
-                let file_paths = extract_file_paths_from_value(payload.get("output").unwrap_or(&Value::Null));
+                let file_paths =
+                    extract_file_paths_from_value(payload.get("output").unwrap_or(&Value::Null));
 
                 if !file_paths.is_empty() {
                     push_detail_message(
@@ -261,8 +266,9 @@ fn parse_claude_detail_messages(path: &Path) -> Result<Vec<DetailMessageRecord>>
                             .and_then(|v| v.as_str())
                             .unwrap_or("tool")
                             .to_string();
-                        let file_paths =
-                            extract_file_paths_from_value(item.get("input").unwrap_or(&Value::Null));
+                        let file_paths = extract_file_paths_from_value(
+                            item.get("input").unwrap_or(&Value::Null),
+                        );
 
                         if let Some(call_id) = item.get("id").and_then(|v| v.as_str()) {
                             tools_by_call_id.insert(
@@ -326,15 +332,19 @@ fn parse_claude_detail_messages(path: &Path) -> Result<Vec<DetailMessageRecord>>
 
                 let current_files = sorted_paths(
                     value
-                    .get("snapshot")
-                    .and_then(|snapshot| snapshot.get("trackedFileBackups"))
-                    .and_then(|files| files.as_object())
-                    .map(|map| map.keys().cloned().collect::<Vec<_>>())
-                    .unwrap_or_default(),
+                        .get("snapshot")
+                        .and_then(|snapshot| snapshot.get("trackedFileBackups"))
+                        .and_then(|files| files.as_object())
+                        .map(|map| map.keys().cloned().collect::<Vec<_>>())
+                        .unwrap_or_default(),
                 );
                 let file_paths = current_files
                     .iter()
-                    .filter(|path| !previous_snapshot_files.iter().any(|previous| previous == *path))
+                    .filter(|path| {
+                        !previous_snapshot_files
+                            .iter()
+                            .any(|previous| previous == *path)
+                    })
                     .cloned()
                     .collect::<Vec<_>>();
                 previous_snapshot_files = current_files;
@@ -355,6 +365,117 @@ fn parse_claude_detail_messages(path: &Path) -> Result<Vec<DetailMessageRecord>>
                         Some("file-history-snapshot".to_string()),
                         file_paths,
                     );
+                }
+            }
+            "attachment" => {
+                let attachment = value.get("attachment").unwrap_or(&Value::Null);
+                match attachment
+                    .get("type")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                {
+                    "selected_lines_in_ide" => {
+                        let ide_name = attachment
+                            .get("ideName")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("IDE");
+                        let line_start = attachment
+                            .get("lineStart")
+                            .and_then(|v| v.as_i64())
+                            .unwrap_or_default();
+                        let line_end = attachment
+                            .get("lineEnd")
+                            .and_then(|v| v.as_i64())
+                            .unwrap_or(line_start);
+                        let line_count = if line_start > 0 && line_end >= line_start {
+                            line_end - line_start + 1
+                        } else {
+                            0
+                        };
+                        let display_path = attachment
+                            .get("displayPath")
+                            .and_then(|v| v.as_str())
+                            .or_else(|| attachment.get("filename").and_then(|v| v.as_str()))
+                            .unwrap_or("unknown file");
+                        let content = attachment
+                            .get("content")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .trim();
+                        if content.is_empty() {
+                            continue;
+                        }
+
+                        push_detail_message(
+                            &mut messages,
+                            &mut seq_no,
+                            "system".to_string(),
+                            "selection_context".to_string(),
+                            format!(
+                                "Selected {} lines from {} in {}\n{}",
+                                line_count.max(1),
+                                display_path,
+                                ide_name,
+                                content
+                            ),
+                            created_at,
+                            Some(ide_name.to_string()),
+                            vec![display_path.to_string()],
+                        );
+                    }
+                    "file" => {
+                        let display_path = attachment
+                            .get("displayPath")
+                            .and_then(|v| v.as_str())
+                            .or_else(|| attachment.get("filename").and_then(|v| v.as_str()))
+                            .unwrap_or("unknown file");
+                        let file = attachment
+                            .get("content")
+                            .and_then(|content| content.get("file"))
+                            .unwrap_or(&Value::Null);
+                        let content = file
+                            .get("content")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .trim();
+                        let num_lines = file
+                            .get("numLines")
+                            .and_then(|v| v.as_i64())
+                            .unwrap_or_else(|| content.lines().count() as i64);
+                        if content.is_empty() {
+                            continue;
+                        }
+
+                        push_detail_message(
+                            &mut messages,
+                            &mut seq_no,
+                            "system".to_string(),
+                            "file_context".to_string(),
+                            format!("Read {} ({} lines)\n{}", display_path, num_lines, content),
+                            created_at,
+                            None,
+                            vec![display_path.to_string()],
+                        );
+                    }
+                    "nested_memory" => {
+                        let display_path = attachment
+                            .get("displayPath")
+                            .and_then(|v| v.as_str())
+                            .or_else(|| attachment.get("path").and_then(|v| v.as_str()))
+                            .unwrap_or("CLAUDE.md");
+
+                        push_detail_message(
+                            &mut messages,
+                            &mut seq_no,
+                            "system".to_string(),
+                            "memory_context".to_string(),
+                            format!("Loaded {}", display_path),
+                            created_at,
+                            None,
+                            vec![display_path.to_string()],
+                        );
+                    }
+                    _ => {}
                 }
             }
             _ => {}

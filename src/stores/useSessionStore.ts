@@ -33,7 +33,7 @@ export const useSessionStore = create<SessionStore>((set) => ({
   detailLoading: false,
   sourceFilter: "all",
   projectFilter: "all",
-  timeRange: "7d",
+  timeRange: "today",
   lastScannedAt: null,
   setSessions: (sessions) =>
     set(() => ({
@@ -49,8 +49,6 @@ export const useSessionStore = create<SessionStore>((set) => ({
 
       return {
         selectedId: id,
-        detail: null,
-        detailLoading: true,
       };
     }),
   setDetail: (detail) => set(() => ({ detail })),

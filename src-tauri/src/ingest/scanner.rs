@@ -115,9 +115,9 @@ fn scan_adapter_sessions<A: SessionAdapter>(adapter: &A) -> Result<Vec<Normalize
         .discover_sessions()
         .with_context(|| format!("discover {} sessions", adapter.source_id()))?;
     for path in paths {
-        let mut session = adapter
-            .parse_session(&path)
-            .with_context(|| format!("parse {} session: {}", adapter.source_id(), path.display()))?;
+        let mut session = adapter.parse_session(&path).with_context(|| {
+            format!("parse {} session: {}", adapter.source_id(), path.display())
+        })?;
         if session.model_id.is_empty() && !session.raw_ref.is_empty() {
             session.model_id = extract_model_id(adapter.source_id(), Path::new(&session.raw_ref));
         }
@@ -198,8 +198,8 @@ fn read_claude_project_sessions(root: &Path) -> Result<HashMap<String, ClaudeSes
     }
 
     let mut out = HashMap::new();
-    for entry in
-        std::fs::read_dir(&projects_dir).with_context(|| format!("read_dir {}", projects_dir.display()))?
+    for entry in std::fs::read_dir(&projects_dir)
+        .with_context(|| format!("read_dir {}", projects_dir.display()))?
     {
         let entry = entry.with_context(|| format!("read entry in {}", projects_dir.display()))?;
         let project_dir = entry.path();
@@ -222,7 +222,9 @@ fn read_claude_project_sessions(root: &Path) -> Result<HashMap<String, ClaudeSes
                         let inferred = project_dir.join(format!("{}.jsonl", session.session_id));
                         inferred.exists().then(|| inferred.display().to_string())
                     });
-                let entry = out.entry(session.session_id).or_insert_with(ClaudeSessionPathMeta::default);
+                let entry = out
+                    .entry(session.session_id)
+                    .or_insert_with(ClaudeSessionPathMeta::default);
                 if entry.path.is_none() {
                     entry.path = candidate_path;
                 }
@@ -232,9 +234,12 @@ fn read_claude_project_sessions(root: &Path) -> Result<HashMap<String, ClaudeSes
             }
         }
 
-        for session_path in discover_jsonl_sessions(&project_dir)
-            .with_context(|| format!("discover claude project sessions in {}", project_dir.display()))?
-        {
+        for session_path in discover_jsonl_sessions(&project_dir).with_context(|| {
+            format!(
+                "discover claude project sessions in {}",
+                project_dir.display()
+            )
+        })? {
             let Some(session_id) = session_path
                 .file_stem()
                 .and_then(|value| value.to_str())
@@ -243,7 +248,9 @@ fn read_claude_project_sessions(root: &Path) -> Result<HashMap<String, ClaudeSes
                 continue;
             };
 
-            let entry = out.entry(session_id).or_insert_with(ClaudeSessionPathMeta::default);
+            let entry = out
+                .entry(session_id)
+                .or_insert_with(ClaudeSessionPathMeta::default);
             if entry.path.is_none() {
                 entry.path = Some(session_path.display().to_string());
             }
@@ -268,7 +275,8 @@ fn read_codex_session_meta(root: &Path) -> Result<HashMap<String, CodexSessionMe
 
         for (index, line) in reader.lines().enumerate() {
             let line_no = index + 1;
-            let line = line.with_context(|| format!("read line {line_no} from {}", path.display()))?;
+            let line =
+                line.with_context(|| format!("read line {line_no} from {}", path.display()))?;
             if line.trim().is_empty() {
                 continue;
             }
@@ -360,7 +368,9 @@ fn scan_real_claude_sources(root: &Path) -> Result<Vec<NormalizedSession>> {
 
         for line in reader.lines() {
             let Ok(line) = line else { break };
-            let Ok(value) = serde_json::from_str::<Value>(&line) else { continue };
+            let Ok(value) = serde_json::from_str::<Value>(&line) else {
+                continue;
+            };
             let ts = value.get("timestamp").and_then(|v| v.as_str());
             if let Some(ts_str) = ts {
                 if let Ok(dt) = ts_str.parse::<DateTime<Utc>>() {
@@ -370,9 +380,14 @@ fn scan_real_claude_sources(root: &Path) -> Result<Vec<NormalizedSession>> {
                 }
             }
             if cwd.is_none() {
-                cwd = value.get("cwd").and_then(|v| v.as_str()).map(|s| s.to_string());
+                cwd = value
+                    .get("cwd")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
             }
-            if first_user_text.is_none() && value.get("type").and_then(|v| v.as_str()) == Some("user") {
+            if first_user_text.is_none()
+                && value.get("type").and_then(|v| v.as_str()) == Some("user")
+            {
                 first_user_text = value
                     .get("message")
                     .and_then(|m| m.get("content"))
@@ -400,11 +415,10 @@ fn scan_real_claude_sources(root: &Path) -> Result<Vec<NormalizedSession>> {
         let meta = meta_by_session.get(&session_id);
         let raw = raw_by_session.get(&session_id);
         let project_path = normalize_project_path(
-            &acc
-            .project_path
-            .or_else(|| raw.and_then(|value| value.project_path.clone()))
-            .or_else(|| meta.and_then(|value| value.cwd.clone()))
-            .unwrap_or_else(|| "Unknown Project".to_string()),
+            &acc.project_path
+                .or_else(|| raw.and_then(|value| value.project_path.clone()))
+                .or_else(|| meta.and_then(|value| value.cwd.clone()))
+                .unwrap_or_else(|| "Unknown Project".to_string()),
         );
         let project_name = project_display_name(&project_path);
 
@@ -416,8 +430,12 @@ fn scan_real_claude_sources(root: &Path) -> Result<Vec<NormalizedSession>> {
             None => continue,
         };
         let ended_at_ms = acc.ended_at_ms.unwrap_or(started_at_ms);
-        let Ok(started_at) = rfc3339_millis(started_at_ms) else { continue };
-        let Ok(ended_at) = rfc3339_millis(ended_at_ms) else { continue };
+        let Ok(started_at) = rfc3339_millis(started_at_ms) else {
+            continue;
+        };
+        let Ok(ended_at) = rfc3339_millis(ended_at_ms) else {
+            continue;
+        };
 
         let messages: Vec<_> = acc
             .messages
@@ -497,16 +515,22 @@ fn scan_real_codex_sources(root: &Path) -> Result<Vec<NormalizedSession>> {
     let mut sessions = Vec::new();
     for (session_id, mut acc) in grouped {
         acc.messages.sort_by_key(|(timestamp, _)| *timestamp);
-        let started_at_s = acc.started_at_s.context("codex session missing started_at")?;
+        let started_at_s = acc
+            .started_at_s
+            .context("codex session missing started_at")?;
         let ended_at_s = acc.ended_at_s.unwrap_or(started_at_s);
         let started_at = rfc3339_seconds(started_at_s)?;
         let ended_at = rfc3339_seconds(ended_at_s)?;
         let index = index_by_session.get(&session_id);
         let project_path = normalize_project_path(
             &index
-            .and_then(|entry| entry.cwd.clone())
-            .or_else(|| meta_by_session.get(&session_id).and_then(|meta| meta.cwd.clone()))
-            .unwrap_or_else(|| "Unknown Project".to_string()),
+                .and_then(|entry| entry.cwd.clone())
+                .or_else(|| {
+                    meta_by_session
+                        .get(&session_id)
+                        .and_then(|meta| meta.cwd.clone())
+                })
+                .unwrap_or_else(|| "Unknown Project".to_string()),
         );
         let project_name = project_display_name(&project_path);
         let title_suffix = index

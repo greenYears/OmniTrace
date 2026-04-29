@@ -186,7 +186,7 @@ export function SidebarFilters({
       <FilterGroup
         title="时间范围"
         options={timeRanges}
-        labels={{ all: "全部", "7d": "最近 7 天", "30d": "最近 30 天" }}
+        labels={{ today: "当日", all: "全部", "7d": "最近 7 天", "30d": "最近 30 天" }}
         value={timeRange}
         onSelect={(value) => onChange({ timeRange: value })}
       />

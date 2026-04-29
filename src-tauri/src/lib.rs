@@ -11,6 +11,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::scan_sources,
             commands::get_session_detail,
+            commands::probe_token_usage_sources,
             commands::delete_session
         ])
         .run(tauri::generate_context!())

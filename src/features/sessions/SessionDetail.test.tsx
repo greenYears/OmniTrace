@@ -25,7 +25,7 @@ describe("SessionDetail", () => {
     });
   });
 
-  it("renders assistant replies and tool/file summaries", async () => {
+  it("renders tool/file summaries behind the owning message card", async () => {
     render(
       <SessionDetail
         detail={{
@@ -62,18 +62,44 @@ describe("SessionDetail", () => {
               id: "message:3",
               role: "tool",
               kind: "tool_call",
+              toolName: "exec_command",
+              contentText: "pnpm vitest run",
+              createdAt: "2026-04-21T09:58:48Z",
+              filePaths: [],
+            },
+            {
+              id: "message:4",
+              role: "tool",
+              kind: "tool_call",
               toolName: "Read",
               contentText: "读取文件",
               createdAt: "2026-04-21T09:58:50Z",
               filePaths: ["src/features/sessions/SessionDetail.tsx"],
             },
             {
-              id: "message:4",
+              id: "message:5",
               role: "tool",
               kind: "file_summary",
               contentText: "修改了 2 个文件",
               createdAt: "2026-04-21T09:59:10Z",
               filePaths: ["src/App.tsx", "src/styles.css"],
+            },
+            {
+              id: "message:6",
+              role: "assistant",
+              kind: "message",
+              contentText: "接下来我会运行测试。",
+              createdAt: "2026-04-21T09:59:20Z",
+              filePaths: [],
+            },
+            {
+              id: "message:7",
+              role: "tool",
+              kind: "tool_call",
+              toolName: "write_stdin",
+              contentText: "输入确认",
+              createdAt: "2026-04-21T09:59:30Z",
+              filePaths: [],
             },
           ],
         }}
@@ -81,18 +107,216 @@ describe("SessionDetail", () => {
     );
 
     expect(screen.getByText("我先查看当前详情面板的结构。")).toBeInTheDocument();
+    expect(screen.getByText("接下来我会运行测试。")).toBeInTheDocument();
     expect(screen.getAllByText("Codex").length).toBeGreaterThan(0);
+    expect(screen.queryByText("exec_command")).not.toBeInTheDocument();
+    expect(screen.queryByText("pnpm vitest run")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "显示工具调用 4" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "工具调用 3" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "工具调用 1" })).toBeInTheDocument();
+    expect(screen.queryByText("Read")).not.toBeInTheDocument();
+    expect(screen.queryByText("SessionDetail.tsx")).not.toBeInTheDocument();
+    expect(screen.queryByText("App.tsx, styles.css")).not.toBeInTheDocument();
+    expect(screen.queryByText("write_stdin")).not.toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "工具调用 3" }));
+    expect(screen.getByText("exec_command")).toBeInTheDocument();
     expect(screen.getByText("Read")).toBeInTheDocument();
     expect(screen.getByText("SessionDetail.tsx")).toBeInTheDocument();
     expect(screen.getByText("App.tsx, styles.css")).toBeInTheDocument();
+    expect(screen.queryByText("write_stdin")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /exec_command/ }));
+    expect(screen.getByText("pnpm vitest run")).toBeInTheDocument();
 
-    const user = userEvent.setup();
-    const toolButtons = screen.getAllByRole("button");
-    await user.click(toolButtons[1]!);
+    await user.click(screen.getByRole("button", { name: /App\.tsx, styles\.css/ }));
 
     expect(screen.getByText("修改了 2 个文件")).toBeInTheDocument();
     expect(screen.getByText("src/App.tsx")).toBeInTheDocument();
     expect(screen.getByText("src/styles.css")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "工具调用 1" }));
+    expect(screen.getByText("write_stdin")).toBeInTheDocument();
+  });
+
+  it("renders Claude tool-only turns as a separate action block instead of inside the user message", async () => {
+    render(
+      <SessionDetail
+        detail={{
+          id: "session:claude:tool-only",
+          sourceId: "claude_code",
+          title: "Claude: OmniTrace",
+          updatedAt: "2026-04-21T10:00:00Z",
+          startedAt: "2026-04-21T09:58:00Z",
+          endedAt: "2026-04-21T10:00:00Z",
+          projectName: "OmniTrace",
+          projectPath: "/Users/test/workspace/OmniTrace",
+          messageCount: 4,
+          preview: "还是加一个判断吧",
+          fileSize: 0,
+          modelId: "",
+          messages: [
+            {
+              id: "message:1",
+              role: "user",
+              kind: "message",
+              contentText: "还是加一个判断吧",
+              createdAt: "2026-04-21T09:58:30Z",
+              filePaths: [],
+            },
+            {
+              id: "message:2",
+              role: "tool",
+              kind: "tool_call",
+              toolName: "Edit",
+              contentText: "编辑 Java 文件",
+              createdAt: "2026-04-21T09:58:40Z",
+              filePaths: ["MgtIncomeRecordCqqRollingMatchHandler.java"],
+            },
+            {
+              id: "message:3",
+              role: "tool",
+              kind: "file_summary",
+              contentText: "修改了 1 个文件",
+              createdAt: "2026-04-21T09:58:45Z",
+              filePaths: ["MgtIncomeRecordCqqRollingMatchHandler.java"],
+            },
+            {
+              id: "message:4",
+              role: "assistant",
+              kind: "message",
+              contentText: "已加回。现在两层都有防护。",
+              createdAt: "2026-04-21T09:59:00Z",
+              filePaths: [],
+            },
+          ],
+        }}
+      />,
+    );
+
+    const userCard = screen.getByText("还是加一个判断吧").closest(".msg-user-card");
+    expect(userCard).toBeInTheDocument();
+    expect(userCard).not.toHaveTextContent("工具调用 2");
+    expect(screen.getByText("Claude 执行动作")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "工具调用 2" })).toBeInTheDocument();
+    expect(screen.queryByText("Edit")).not.toBeInTheDocument();
+  });
+
+  it("renders Claude selected IDE lines as compact context under the related user message", async () => {
+    render(
+      <SessionDetail
+        detail={{
+          id: "session:claude:selection",
+          sourceId: "claude_code",
+          title: "Claude: OmniTrace",
+          updatedAt: "2026-04-21T10:00:00Z",
+          startedAt: "2026-04-21T09:58:00Z",
+          endedAt: "2026-04-21T10:00:00Z",
+          projectName: "OmniTrace",
+          projectPath: "/Users/test/workspace/OmniTrace",
+          messageCount: 2,
+          preview: "还是加一个判断吧",
+          fileSize: 0,
+          modelId: "",
+          messages: [
+            {
+              id: "message:1",
+              role: "user",
+              kind: "message",
+              contentText: "还是加一个判断吧",
+              createdAt: "2026-04-21T09:58:30Z",
+              filePaths: [],
+            },
+            {
+              id: "message:2",
+              role: "system",
+              kind: "selection_context",
+              toolName: "IntelliJ IDEA",
+              contentText: [
+                "Selected 1 lines from src/Handler.java in IntelliJ IDEA",
+                "stepDays",
+              ].join("\n"),
+              createdAt: "2026-04-21T09:58:31Z",
+              filePaths: ["src/Handler.java"],
+            },
+          ],
+        }}
+      />,
+    );
+
+    const userCard = screen.getByText("还是加一个判断吧").closest(".msg-user-card");
+    expect(userCard).toBeInTheDocument();
+    expect(userCard).toHaveTextContent("选区上下文");
+    expect(userCard).toHaveTextContent("Selected 1 lines from src/Handler.java in IntelliJ IDEA");
+    expect(userCard).not.toHaveTextContent("stepDays");
+    expect(screen.queryByRole("button", { name: /工具调用/ })).not.toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /选区上下文/ }));
+    expect(userCard).toHaveTextContent("stepDays");
+  });
+
+  it("renders Claude @file references and loaded memories as compact context under the related user message", async () => {
+    render(
+      <SessionDetail
+        detail={{
+          id: "session:claude:file-reference",
+          sourceId: "claude_code",
+          title: "Claude: OmniTrace",
+          updatedAt: "2026-04-21T10:00:00Z",
+          startedAt: "2026-04-21T09:58:00Z",
+          endedAt: "2026-04-21T10:00:00Z",
+          projectName: "OmniTrace",
+          projectPath: "/Users/test/workspace/OmniTrace",
+          messageCount: 3,
+          preview: "@src/Handler.java#L101-122 请解释 stepDays",
+          fileSize: 0,
+          modelId: "",
+          messages: [
+            {
+              id: "message:1",
+              role: "user",
+              kind: "message",
+              contentText: "@src/Handler.java#L101-122 请解释 stepDays",
+              createdAt: "2026-04-21T09:58:30Z",
+              filePaths: [],
+            },
+            {
+              id: "message:2",
+              role: "system",
+              kind: "file_context",
+              contentText: [
+                "Read src/Handler.java (22 lines)",
+                "LocalDate cursorStart = param.getStartDate();",
+              ].join("\n"),
+              createdAt: "2026-04-21T09:58:31Z",
+              filePaths: ["src/Handler.java"],
+            },
+            {
+              id: "message:3",
+              role: "system",
+              kind: "memory_context",
+              contentText: "Loaded finance-center/CLAUDE.md",
+              createdAt: "2026-04-21T09:58:32Z",
+              filePaths: ["finance-center/CLAUDE.md"],
+            },
+          ],
+        }}
+      />,
+    );
+
+    const userCard = screen.getByText("@src/Handler.java#L101-122 请解释 stepDays").closest(".msg-user-card");
+    expect(userCard).toBeInTheDocument();
+    expect(userCard).toHaveTextContent("文件上下文");
+    expect(userCard).toHaveTextContent("Read src/Handler.java (22 lines)");
+    expect(userCard).not.toHaveTextContent("LocalDate cursorStart");
+    expect(userCard).toHaveTextContent("项目记忆");
+    expect(userCard).toHaveTextContent("Loaded finance-center/CLAUDE.md");
+    expect(screen.queryByRole("button", { name: /工具调用/ })).not.toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /文件上下文/ }));
+    expect(userCard).toHaveTextContent("LocalDate cursorStart");
   });
 
   it("renders markdown replies in a compact TUI-like flow", () => {

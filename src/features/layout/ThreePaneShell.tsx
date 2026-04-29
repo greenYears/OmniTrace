@@ -43,32 +43,12 @@ export function ThreePaneShell({
   onSelect,
   onDelete,
 }: ThreePaneShellProps) {
-  const now = Date.now();
   const filteredSessions = sessions.filter((session) => {
     const matchesSource =
       sourceFilter === "all" || session.sourceId === sourceFilter;
     const matchesProject =
       projectFilter === "all" || session.projectName === projectFilter;
-
-    if (!matchesSource || !matchesProject) {
-      return false;
-    }
-
-    if (timeRange === "all") {
-      return true;
-    }
-
-    const updatedAtMs = Date.parse(session.updatedAt);
-    if (Number.isNaN(updatedAtMs)) {
-      return false;
-    }
-
-    const ageMs = now - updatedAtMs;
-    const maxAgeMs =
-      timeRange === "7d"
-        ? 7 * 24 * 60 * 60 * 1000
-        : 30 * 24 * 60 * 60 * 1000;
-    return ageMs <= maxAgeMs;
+    return matchesSource && matchesProject;
   });
   const projects: ProjectFilterOption[] = [
     { name: "all" },
@@ -85,7 +65,7 @@ export function ThreePaneShell({
     ),
   ];
   const selectedDetail =
-    detail && filteredSessions.some((session) => session.id === detail.id)
+    detail && detail.id === selectedId && filteredSessions.some((session) => session.id === detail.id)
       ? detail
       : null;
   const selectedSession = filteredSessions.find((session) => session.id === selectedId) ?? null;
@@ -102,7 +82,7 @@ export function ThreePaneShell({
       <SidebarFilters
         sources={["all", "claude_code", "codex"]}
         projects={projects}
-        timeRanges={["all", "7d", "30d"]}
+        timeRanges={["today", "7d", "30d", "all"]}
         source={sourceFilter}
         project={projectFilter}
         timeRange={timeRange}
@@ -125,7 +105,11 @@ export function ThreePaneShell({
           </section>
 
           <section className="three-pane three-pane-right" aria-label="Session detail">
-            <SessionDetailPane detail={selectedDetail} isLoading={detailLoading} pendingSession={pendingSession} />
+            <SessionDetailPane
+              detail={selectedDetail}
+              isLoading={detailLoading || Boolean(selectedSession && !selectedDetail)}
+              pendingSession={pendingSession}
+            />
           </section>
         </>
       )}

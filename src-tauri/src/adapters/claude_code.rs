@@ -29,10 +29,9 @@ impl ClaudeCodeAdapter {
             .to_string();
 
         let project_path = normalize_project_path(
-            v
-            .get("project")
-            .and_then(|x| x.as_str())
-            .unwrap_or("Unknown Project"),
+            v.get("project")
+                .and_then(|x| x.as_str())
+                .unwrap_or("Unknown Project"),
         );
         let project_name = project_display_name(&project_path);
 

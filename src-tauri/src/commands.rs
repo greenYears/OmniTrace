@@ -1,14 +1,16 @@
 use std::path::Path;
 use std::sync::{LazyLock, Mutex};
 
+use chrono::{DateTime, Duration, FixedOffset, Utc};
 use rusqlite::{Connection, OptionalExtension};
 use serde::Deserialize;
 use serde::Serialize;
 
 use crate::db;
 use crate::domain::detail::{parse_detail_messages, DetailMessageRecord};
-use crate::ingest::scanner::ScanResult;
 use crate::ingest::scanner::scan_home_sources;
+use crate::ingest::scanner::ScanResult;
+use crate::ingest::token_probe::{probe_token_usage, TokenUsageProbeReport};
 use crate::ingest::upsert::{initialize_database, upsert_sessions};
 
 static SCAN_CACHE: LazyLock<Mutex<Option<ScanResult>>> = LazyLock::new(|| Mutex::new(None));
@@ -68,7 +70,9 @@ fn resolve_home_root() -> Result<std::path::PathBuf, String> {
 }
 
 fn load_scan_result(force_refresh: bool) -> Result<ScanResult, String> {
-    let mut cache = SCAN_CACHE.lock().map_err(|_| "scan cache poisoned".to_string())?;
+    let mut cache = SCAN_CACHE
+        .lock()
+        .map_err(|_| "scan cache poisoned".to_string())?;
     if force_refresh || cache.is_none() {
         let result = scan_home_sources(resolve_home_root()?).map_err(|e| e.to_string())?;
         *cache = Some(result.clone());
@@ -142,10 +146,40 @@ ORDER BY s.updated_at DESC, s.source_id ASC, s.external_id ASC
         .map_err(|e| e.to_string())
 }
 
-fn load_session_detail(
-    conn: &Connection,
-    id: &str,
-) -> Result<Option<SessionDetailDto>, String> {
+fn beijing_offset() -> FixedOffset {
+    FixedOffset::east_opt(8 * 3600).expect("Asia/Shanghai offset should be valid")
+}
+
+fn filter_session_items_by_time_range(
+    sessions: Vec<SessionListItem>,
+    time_range: Option<&str>,
+    now: DateTime<FixedOffset>,
+) -> Vec<SessionListItem> {
+    let Some(time_range) = time_range.filter(|value| *value != "all") else {
+        return sessions;
+    };
+    let today = now.date_naive();
+    let start_date = match time_range {
+        "today" => today,
+        "7d" => today - Duration::days(6),
+        "30d" => today - Duration::days(29),
+        _ => return sessions,
+    };
+
+    sessions
+        .into_iter()
+        .filter(|session| {
+            DateTime::parse_from_rfc3339(&session.updated_at)
+                .map(|updated_at| {
+                    let updated_date = updated_at.with_timezone(&beijing_offset()).date_naive();
+                    updated_date >= start_date && updated_date <= today
+                })
+                .unwrap_or(false)
+        })
+        .collect()
+}
+
+fn load_session_detail(conn: &Connection, id: &str) -> Result<Option<SessionDetailDto>, String> {
     #[derive(Debug, Clone)]
     struct SessionRow {
         id: String,
@@ -225,14 +259,15 @@ WHERE s.id = ?1
         None
     };
 
-    let messages = if let Some(parsed_messages) = parsed_messages.filter(|messages| !messages.is_empty()) {
-        parsed_messages
-            .into_iter()
-            .map(|message| map_detail_record(&session.id, message))
-            .collect::<Vec<_>>()
-    } else {
-        load_db_session_messages(conn, id)?
-    };
+    let messages =
+        if let Some(parsed_messages) = parsed_messages.filter(|messages| !messages.is_empty()) {
+            parsed_messages
+                .into_iter()
+                .map(|message| map_detail_record(&session.id, message))
+                .collect::<Vec<_>>()
+        } else {
+            load_db_session_messages(conn, id)?
+        };
 
     let detail = SessionDetailDto {
         id: session.id,
@@ -277,7 +312,8 @@ ORDER BY seq_no ASC
     let rows = stmt
         .query_map([id], |row| {
             let metadata_json: String = row.get(4)?;
-            let metadata = serde_json::from_str::<MessageMetadata>(&metadata_json).unwrap_or_default();
+            let metadata =
+                serde_json::from_str::<MessageMetadata>(&metadata_json).unwrap_or_default();
             Ok(SessionMessageDto {
                 id: row.get(0)?,
                 role: row.get(1)?,
@@ -290,8 +326,7 @@ ORDER BY seq_no ASC
         })
         .map_err(|e| e.to_string())?;
 
-    rows
-        .collect::<Result<Vec<_>, _>>()
+    rows.collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())
 }
 
@@ -308,9 +343,14 @@ fn map_detail_record(session_id: &str, record: DetailMessageRecord) -> SessionMe
 }
 
 #[tauri::command]
-pub fn scan_sources() -> Result<Vec<SessionListItem>, String> {
+pub fn scan_sources(time_range: Option<String>) -> Result<Vec<SessionListItem>, String> {
     let conn = open_history_database(true)?;
-    list_session_items(&conn)
+    let sessions = list_session_items(&conn)?;
+    Ok(filter_session_items_by_time_range(
+        sessions,
+        time_range.as_deref(),
+        Utc::now().with_timezone(&beijing_offset()),
+    ))
 }
 
 #[tauri::command]
@@ -320,15 +360,18 @@ pub fn get_session_detail(id: String) -> Result<Option<SessionDetailDto>, String
 }
 
 #[tauri::command]
+pub fn probe_token_usage_sources() -> Result<TokenUsageProbeReport, String> {
+    probe_token_usage(&resolve_home_root()?).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn delete_session(id: String) -> Result<(), String> {
     let conn = open_history_database(false)?;
 
     let raw_ref: Option<String> = conn
-        .query_row(
-            "SELECT raw_ref FROM sessions WHERE id = ?1",
-            [&id],
-            |row| row.get(0),
-        )
+        .query_row("SELECT raw_ref FROM sessions WHERE id = ?1", [&id], |row| {
+            row.get(0)
+        })
         .optional()
         .map_err(|e| e.to_string())?;
 
@@ -343,8 +386,64 @@ pub fn delete_session(id: String) -> Result<(), String> {
     conn.execute("DELETE FROM sessions WHERE id = ?1", [&id])
         .map_err(|e| e.to_string())?;
 
-    let mut cache = SCAN_CACHE.lock().map_err(|_| "scan cache poisoned".to_string())?;
+    let mut cache = SCAN_CACHE
+        .lock()
+        .map_err(|_| "scan cache poisoned".to_string())?;
     *cache = None;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{FixedOffset, TimeZone};
+
+    fn item(id: &str, updated_at: &str) -> SessionListItem {
+        SessionListItem {
+            id: id.to_string(),
+            resume_id: id.to_string(),
+            source_id: "codex".to_string(),
+            title: id.to_string(),
+            updated_at: updated_at.to_string(),
+            project_name: "project".to_string(),
+            project_path: "/tmp/project".to_string(),
+            message_count: 1,
+            preview: String::new(),
+            file_size: 0,
+            model_id: String::new(),
+        }
+    }
+
+    #[test]
+    fn filters_session_items_by_selected_time_range_in_beijing_time() {
+        let now = FixedOffset::east_opt(8 * 3600)
+            .unwrap()
+            .with_ymd_and_hms(2026, 4, 28, 11, 30, 0)
+            .unwrap();
+        let sessions = vec![
+            item("today", "2026-04-28T02:00:00Z"),
+            item("midnight", "2026-04-27T16:00:00Z"),
+            item("week", "2026-04-22T00:00:00Z"),
+            item("old", "2026-04-01T00:00:00Z"),
+        ];
+
+        let today = filter_session_items_by_time_range(sessions.clone(), Some("today"), now);
+        assert_eq!(
+            today
+                .iter()
+                .map(|item| item.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["today", "midnight"]
+        );
+
+        let week = filter_session_items_by_time_range(sessions.clone(), Some("7d"), now);
+        assert_eq!(
+            week.iter().map(|item| item.id.as_str()).collect::<Vec<_>>(),
+            vec!["today", "midnight", "week"]
+        );
+
+        let all = filter_session_items_by_time_range(sessions.clone(), Some("all"), now);
+        assert_eq!(all.len(), 4);
+    }
 }
