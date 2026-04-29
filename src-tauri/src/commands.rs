@@ -1,6 +1,7 @@
 use std::path::Path;
 use std::sync::{LazyLock, Mutex};
 
+use chrono::{DateTime, Duration, FixedOffset, Utc};
 use rusqlite::{Connection, OptionalExtension};
 use serde::Deserialize;
 use serde::Serialize;
@@ -143,6 +144,39 @@ ORDER BY s.updated_at DESC, s.source_id ASC, s.external_id ASC
 
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())
+}
+
+fn beijing_offset() -> FixedOffset {
+    FixedOffset::east_opt(8 * 3600).expect("Asia/Shanghai offset should be valid")
+}
+
+fn filter_session_items_by_time_range(
+    sessions: Vec<SessionListItem>,
+    time_range: Option<&str>,
+    now: DateTime<FixedOffset>,
+) -> Vec<SessionListItem> {
+    let Some(time_range) = time_range.filter(|value| *value != "all") else {
+        return sessions;
+    };
+    let today = now.date_naive();
+    let start_date = match time_range {
+        "today" => today,
+        "7d" => today - Duration::days(6),
+        "30d" => today - Duration::days(29),
+        _ => return sessions,
+    };
+
+    sessions
+        .into_iter()
+        .filter(|session| {
+            DateTime::parse_from_rfc3339(&session.updated_at)
+                .map(|updated_at| {
+                    let updated_date = updated_at.with_timezone(&beijing_offset()).date_naive();
+                    updated_date >= start_date && updated_date <= today
+                })
+                .unwrap_or(false)
+        })
+        .collect()
 }
 
 fn load_session_detail(conn: &Connection, id: &str) -> Result<Option<SessionDetailDto>, String> {
@@ -309,9 +343,14 @@ fn map_detail_record(session_id: &str, record: DetailMessageRecord) -> SessionMe
 }
 
 #[tauri::command]
-pub fn scan_sources() -> Result<Vec<SessionListItem>, String> {
+pub fn scan_sources(time_range: Option<String>) -> Result<Vec<SessionListItem>, String> {
     let conn = open_history_database(true)?;
-    list_session_items(&conn)
+    let sessions = list_session_items(&conn)?;
+    Ok(filter_session_items_by_time_range(
+        sessions,
+        time_range.as_deref(),
+        Utc::now().with_timezone(&beijing_offset()),
+    ))
 }
 
 #[tauri::command]
@@ -353,4 +392,58 @@ pub fn delete_session(id: String) -> Result<(), String> {
     *cache = None;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{FixedOffset, TimeZone};
+
+    fn item(id: &str, updated_at: &str) -> SessionListItem {
+        SessionListItem {
+            id: id.to_string(),
+            resume_id: id.to_string(),
+            source_id: "codex".to_string(),
+            title: id.to_string(),
+            updated_at: updated_at.to_string(),
+            project_name: "project".to_string(),
+            project_path: "/tmp/project".to_string(),
+            message_count: 1,
+            preview: String::new(),
+            file_size: 0,
+            model_id: String::new(),
+        }
+    }
+
+    #[test]
+    fn filters_session_items_by_selected_time_range_in_beijing_time() {
+        let now = FixedOffset::east_opt(8 * 3600)
+            .unwrap()
+            .with_ymd_and_hms(2026, 4, 28, 11, 30, 0)
+            .unwrap();
+        let sessions = vec![
+            item("today", "2026-04-28T02:00:00Z"),
+            item("midnight", "2026-04-27T16:00:00Z"),
+            item("week", "2026-04-22T00:00:00Z"),
+            item("old", "2026-04-01T00:00:00Z"),
+        ];
+
+        let today = filter_session_items_by_time_range(sessions.clone(), Some("today"), now);
+        assert_eq!(
+            today
+                .iter()
+                .map(|item| item.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["today", "midnight"]
+        );
+
+        let week = filter_session_items_by_time_range(sessions.clone(), Some("7d"), now);
+        assert_eq!(
+            week.iter().map(|item| item.id.as_str()).collect::<Vec<_>>(),
+            vec!["today", "midnight", "week"]
+        );
+
+        let all = filter_session_items_by_time_range(sessions.clone(), Some("all"), now);
+        assert_eq!(all.len(), 4);
+    }
 }

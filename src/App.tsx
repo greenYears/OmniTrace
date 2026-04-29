@@ -4,7 +4,7 @@ import { startTransition, useEffect, useRef, useState } from "react";
 import { ThreePaneShell } from "./features/layout/ThreePaneShell";
 import { deleteSession, getSessionDetail, probeTokenUsageSources, scanSources } from "./lib/tauri";
 import { useSessionStore } from "./stores/useSessionStore";
-import type { TokenUsageBucket, TokenUsageProbeReport } from "./types/session";
+import type { TimeRange, TokenUsageBucket, TokenUsageProbeReport } from "./types/session";
 
 type AppView = "sessions" | "tokenUsage";
 type TokenUsageRange = "today" | "7d" | "30d" | "90d" | "all";
@@ -17,6 +17,7 @@ const tokenUsageRanges: Array<{ value: TokenUsageRange; label: string }> = [
   { value: "90d", label: "最近 90 天" },
   { value: "all", label: "全部" },
 ];
+const tokenUsageTimeZone = "Asia/Shanghai";
 
 function formatTokenCount(value: number) {
   return `${formatCompactTokenNumber(value)} tokens`;
@@ -69,9 +70,40 @@ function filterBucketsByRange(days: TokenUsageBucket[], range: TokenUsageRange) 
   return sortedDays.filter((day) => day.date >= startDate);
 }
 
-function filterHourlyBucketsByDay(hours: TokenUsageBucket[], day: string) {
+function getBeijingDateTimeParts(date: Date) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: tokenUsageTimeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const valueOf = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? "";
+
+  return {
+    date: `${valueOf("year")}-${valueOf("month")}-${valueOf("day")}`,
+    hour: Number.parseInt(valueOf("hour"), 10),
+  };
+}
+
+function getHourlySeriesEndHour(day: string, now = new Date()) {
+  const current = getBeijingDateTimeParts(now);
+  return day === current.date && !Number.isNaN(current.hour) ? current.hour : 23;
+}
+
+function filterHourlyBucketsByDay(hours: TokenUsageBucket[], day: string, now = new Date()) {
+  const endHour = getHourlySeriesEndHour(day, now);
+
   return [...hours]
-    .filter((hour) => hour.date.startsWith(`${day} `))
+    .filter((hour) => {
+      if (!hour.date.startsWith(`${day} `)) {
+        return false;
+      }
+
+      const hourValue = Number.parseInt(hour.date.slice(11, 13), 10);
+      return Number.isNaN(hourValue) || hourValue <= endHour;
+    })
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 
@@ -91,17 +123,22 @@ function createEmptyTokenBucket(date: string): TokenUsageBucket {
   };
 }
 
-function buildHourlySeries(hours: TokenUsageBucket[], day: string) {
+export function buildHourlySeries(hours: TokenUsageBucket[], day: string, now = new Date()) {
   if (!day) {
     return [];
   }
 
-  const byHour = new Map(filterHourlyBucketsByDay(hours, day).map((bucket) => [bucket.date, bucket]));
+  const endHour = getHourlySeriesEndHour(day, now);
+  const byHour = new Map(filterHourlyBucketsByDay(hours, day, now).map((bucket) => [bucket.date, bucket]));
 
-  return Array.from({ length: 24 }, (_, hour) => {
+  return Array.from({ length: endHour + 1 }, (_, hour) => {
     const label = `${day} ${hour.toString().padStart(2, "0")}:00`;
     return byHour.get(label) ?? createEmptyTokenBucket(label);
   });
+}
+
+export function filterVisibleTokenDetailBuckets(buckets: TokenUsageBucket[], isHourly: boolean) {
+  return isHourly ? buckets.filter((bucket) => bucket.totalTokens > 0) : buckets;
 }
 
 function getLatestUsageDay(days: TokenUsageBucket[]) {
@@ -253,14 +290,27 @@ function TokenUsageSummary({
   const topModels = aggregateModelBuckets(filteredModelBuckets.length > 0 ? filteredModelBuckets : [])
     .sort((a, b) => b.totalTokens - a.totalTokens)
     .slice(0, 5);
-  const sourceOptions = uniqueValues(report.byModel.map((bucket) => bucket.sourceId))
+  const sourceOptions = uniqueValues(baseModelBuckets.map((bucket) => bucket.sourceId))
     .filter((sourceId): sourceId is TokenUsageSourceFilter => sourceId === "claude_code" || sourceId === "codex");
   const modelOptions = uniqueValues(
-    report.byModel
+    baseModelBuckets
       .filter((bucket) => sourceFilter === "all" || bucket.sourceId === sourceFilter)
       .map((bucket) => bucket.modelId),
   );
+
+  useEffect(() => {
+    if (sourceFilter !== "all" && !sourceOptions.includes(sourceFilter)) {
+      setSourceFilter("all");
+      setModelFilter("all");
+      return;
+    }
+
+    if (modelFilter !== "all" && !modelOptions.includes(modelFilter)) {
+      setModelFilter("all");
+    }
+  }, [modelFilter, modelOptions, sourceFilter, sourceOptions]);
   const maxChartTotal = Math.max(...chartBuckets.map((bucket) => bucket.totalTokens), 1);
+  const detailBuckets = filterVisibleTokenDetailBuckets(chartBuckets, isHourly);
   const chartTitle = isHourly ? "按小时消耗" : "按天消耗";
   const chartAriaLabel = isHourly ? "按小时 token 消耗折线图" : "按天 token 消耗柱状图";
   const detailTitle = isHourly ? "按小时明细" : "按天明细";
@@ -441,7 +491,7 @@ function TokenUsageSummary({
       <div className="token-probe-grid">
         <div className="token-probe-card">
           <h3>{detailTitle}</h3>
-          {chartBuckets.length > 0 ? (
+          {detailBuckets.length > 0 ? (
             <div className="token-day-table">
               <div className="token-day-table-head">
                 <span>{detailFirstColumn}</span>
@@ -451,7 +501,7 @@ function TokenUsageSummary({
                 <span>缓存量</span>
                 <span>思考量</span>
               </div>
-              {chartBuckets.slice().reverse().map((bucket) => (
+              {detailBuckets.slice().reverse().map((bucket) => (
                 <div key={bucket.date} className="token-day-table-row" title={formatTokenTooltip(bucket)}>
                   <span>{isHourly ? bucket.date.slice(11) : bucket.date}</span>
                   <strong>{formatTokenCount(bucket.totalTokens)}</strong>
@@ -554,7 +604,7 @@ function App() {
 
   async function handleRefresh() {
     try {
-      const nextSessions = await scanSources();
+      const nextSessions = await scanSources(timeRange);
       setSessions(nextSessions);
       markScannedNow();
     } catch (error) {
@@ -598,6 +648,20 @@ function App() {
   async function handleOpenTokenUsage() {
     setActiveView("tokenUsage");
     await handleTokenProbe();
+  }
+
+  function handleSessionFilterChange(next: {
+    sourceFilter?: "all" | "claude_code" | "codex";
+    projectFilter?: string;
+    timeRange?: TimeRange;
+  }) {
+    updateFilters(next);
+
+    if (next.timeRange && next.timeRange !== timeRange) {
+      setSessions([]);
+      setDetail(null);
+      setDetailLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -688,7 +752,7 @@ function App() {
             sourceFilter={sourceFilter}
             projectFilter={projectFilter}
             timeRange={timeRange}
-            onFilterChange={updateFilters}
+            onFilterChange={handleSessionFilterChange}
             onSelect={selectSession}
             onDelete={handleDelete}
           />

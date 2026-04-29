@@ -100,3 +100,38 @@ fn probe_token_usage_reports_daily_and_model_totals() {
 
     let _ = fs::remove_dir_all(home);
 }
+
+#[test]
+fn probe_token_usage_reads_codex_token_count_events() {
+    let home = temp_path("codex-token-count");
+    let codex_sessions = home.join(".codex/sessions/2026/04/28");
+    fs::create_dir_all(&codex_sessions).expect("codex sessions dir should be created");
+
+    fs::write(
+        codex_sessions.join("rollout-2026-04-28T11-20-00-codex-1.jsonl"),
+        concat!(
+            "{\"timestamp\":\"2026-04-28T03:20:00.000Z\",\"type\":\"turn_context\",\"payload\":{\"model\":\"gpt-5.4-codex\",\"cwd\":\"/Users/test/workspace/omnitrace\"}}\n",
+            "{\"timestamp\":\"2026-04-28T03:26:00.000Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"last_token_usage\":{\"input_tokens\":100,\"cached_input_tokens\":20,\"output_tokens\":30,\"reasoning_output_tokens\":5,\"total_tokens\":135},\"total_token_usage\":{\"input_tokens\":1000,\"cached_input_tokens\":200,\"output_tokens\":300,\"reasoning_output_tokens\":50,\"total_tokens\":1350},\"model_context_window\":258400}}}\n"
+        ),
+    )
+    .expect("codex token count fixture should be written");
+
+    let report = probe_token_usage(&home).expect("probe should succeed");
+
+    assert_eq!(report.records_with_usage, 1);
+
+    let hour = report
+        .by_model_by_hour
+        .iter()
+        .find(|bucket| bucket.date == "2026-04-28 11:00")
+        .expect("codex token count should be grouped by Beijing hour");
+    assert_eq!(hour.source_id, "codex");
+    assert_eq!(hour.model_id, "gpt-5.4-codex");
+    assert_eq!(hour.input_tokens, 100);
+    assert_eq!(hour.output_tokens, 30);
+    assert_eq!(hour.cache_read_tokens, 20);
+    assert_eq!(hour.reasoning_tokens, 5);
+    assert_eq!(hour.total_tokens, 135);
+
+    let _ = fs::remove_dir_all(home);
+}

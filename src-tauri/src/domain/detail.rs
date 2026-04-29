@@ -369,7 +369,11 @@ fn parse_claude_detail_messages(path: &Path) -> Result<Vec<DetailMessageRecord>>
             }
             "attachment" => {
                 let attachment = value.get("attachment").unwrap_or(&Value::Null);
-                match attachment.get("type").and_then(|v| v.as_str()).unwrap_or("") {
+                match attachment
+                    .get("type")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                {
                     "selected_lines_in_ide" => {
                         let ide_name = attachment
                             .get("ideName")

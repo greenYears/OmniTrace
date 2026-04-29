@@ -1,4 +1,4 @@
-export type TimeRange = "all" | "7d" | "30d";
+export type TimeRange = "today" | "all" | "7d" | "30d";
 
 export type SourceFilter = "all" | "claude_code" | "codex";
 

@@ -110,6 +110,7 @@ fn inspect_jsonl_file(
 ) -> Result<()> {
     let file = File::open(path).with_context(|| format!("open {}", path.display()))?;
     let reader = BufReader::new(file);
+    let mut current_model_id: Option<String> = None;
 
     for (index, line) in reader.lines().enumerate() {
         let line =
@@ -122,6 +123,9 @@ fn inspect_jsonl_file(
         let Ok(value) = serde_json::from_str::<Value>(&line) else {
             continue;
         };
+        if let Some(model_id) = extract_model_id(&value) {
+            current_model_id = Some(model_id);
+        }
         let Some(usage_value) = find_usage_value(&value) else {
             continue;
         };
@@ -132,7 +136,9 @@ fn inspect_jsonl_file(
 
         records.push(UsageRecord {
             source_id: source_id.to_string(),
-            model_id: extract_model_id(&value).unwrap_or_else(|| "unknown".to_string()),
+            model_id: current_model_id
+                .clone()
+                .unwrap_or_else(|| "unknown".to_string()),
             date: extract_date(&value).unwrap_or_else(|| "unknown".to_string()),
             hour: extract_hour(&value).unwrap_or_else(|| "unknown".to_string()),
             path: path.display().to_string(),
@@ -188,6 +194,15 @@ fn find_usage_value(value: &Value) -> Option<&Value> {
         }
     }
 
+    if let Some(usage) = value
+        .get("payload")
+        .and_then(|payload| payload.get("info"))
+        .and_then(|info| info.get("last_token_usage"))
+        .filter(|usage| usage.is_object())
+    {
+        return Some(usage);
+    }
+
     None
 }
 
@@ -205,6 +220,7 @@ fn parse_usage(value: &Value) -> TokenUsage {
     );
     let cache_tokens = cache_creation_tokens + cache_read_tokens;
     let reasoning_tokens = sum_keys(value, &["reasoning_tokens"])
+        + sum_keys(value, &["reasoning_output_tokens"])
         + sum_nested_keys(
             value,
             &["output_tokens_details", "completion_tokens_details"],

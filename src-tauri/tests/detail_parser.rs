@@ -197,7 +197,9 @@ fn parse_claude_detail_messages_includes_file_reference_attachments() {
 
     let file_context = find_by_kind(&messages, "file_context");
     assert_eq!(file_context.role, "system");
-    assert!(file_context.content_text.contains("Read src/Handler.java (22 lines)"));
+    assert!(file_context
+        .content_text
+        .contains("Read src/Handler.java (22 lines)"));
     assert!(file_context.content_text.contains("LocalDate cursorStart"));
     assert_eq!(file_context.file_paths, vec!["src/Handler.java"]);
 
