@@ -12,9 +12,11 @@
   "app": {
     "windows": [
       {
-        "title": "tmpomnitrace-bootstrapmpul84appomnitrace",
+        "title": "OmniTrace",
         "width": 800,
-        "height": 600
+        "height": 600,
+        "titleBarStyle": "overlay",
+        "hiddenTitle": true
       }
     ],
     "security": {

@@ -1,9 +1,12 @@
+import { ToolbarRangeSelector } from "../../components/TimeRangeSelector";
 import { SidebarFilters, type ProjectFilterOption } from "../sidebar/SidebarFilters";
 import type {
+  CustomDateRange,
   SessionDetail,
   SessionListItem,
   SessionScanProgress,
   SourceFilter,
+  TimeRange,
 } from "../../types/session";
 import { SessionDetail as SessionDetailPane } from "../sessions/SessionDetail";
 import { SessionList } from "../sessions/SessionList";
@@ -23,6 +26,14 @@ type ThreePaneShellProps = {
   }) => void;
   onSelect: (id: string) => void;
   onDelete: (id: string) => void;
+  timeRange: TimeRange;
+  customRange: CustomDateRange;
+  onTimeRangeChange: (range: TimeRange) => void;
+  onCustomRangeChange: (range: CustomDateRange) => void;
+  rangeOptions: Array<{ value: TimeRange; label: string }>;
+  onScan: () => void;
+  scanLoading: boolean;
+  canScan: boolean;
 };
 
 type PendingSessionMeta = {
@@ -47,6 +58,14 @@ export function ThreePaneShell({
   onFilterChange,
   onSelect,
   onDelete,
+  timeRange,
+  customRange,
+  onTimeRangeChange,
+  onCustomRangeChange,
+  rangeOptions,
+  onScan,
+  scanLoading,
+  canScan,
 }: ThreePaneShellProps) {
   const filteredSessions = sessions.filter((session) => {
     const matchesSource =
@@ -84,6 +103,28 @@ export function ThreePaneShell({
 
   return (
     <div className={`three-pane-shell${scanProgress ? " has-progress" : ""}`} aria-label="Session viewer">
+      <header className="view-toolbar" data-tauri-drag-region>
+        <div className="view-toolbar-left">
+          <ToolbarRangeSelector
+            ariaLabel="会话扫描时间范围"
+            options={rangeOptions}
+            value={timeRange}
+            onChange={onTimeRangeChange}
+            customRange={customRange}
+            onCustomRangeChange={onCustomRangeChange}
+          />
+        </div>
+        <div className="view-toolbar-right">
+          <button
+            className="scan-button"
+            type="button"
+            onClick={onScan}
+            disabled={scanLoading || !canScan}
+          >
+            {scanLoading ? "◷ 扫描中" : "↻ 扫描"}
+          </button>
+        </div>
+      </header>
       {scanProgress ? (
         <div
           className={`scan-progress-strip${isProgressDone(scanProgress.phase) ? " is-complete" : ""}`}

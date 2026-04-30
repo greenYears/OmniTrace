@@ -2,7 +2,9 @@ import "./styles.css";
 import { startTransition, type PointerEvent, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 
+import { ToolbarRangeSelector, isValidCustomDateRange } from "./components/TimeRangeSelector";
 import { ThreePaneShell } from "./features/layout/ThreePaneShell";
+import { AppSidebar } from "./features/sidebar/AppSidebar";
 import { deleteSession, getSessionDetail, probeTokenUsageSources, scanSources } from "./lib/tauri";
 import { useSessionStore } from "./stores/useSessionStore";
 import type {
@@ -77,52 +79,10 @@ function formatCompactTokenNumber(value: number) {
   return `${formatted}${unit.suffix}`;
 }
 
-function isValidDateValue(value: string) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(value);
-}
-
-function isValidCustomDateRange(range: CustomDateRange) {
-  return isValidDateValue(range.startDate) && isValidDateValue(range.endDate) && range.startDate <= range.endDate;
-}
-
 function serializeTimeRange(range: TimeRange, customRange: CustomDateRange) {
   return range === "custom" && isValidCustomDateRange(customRange)
     ? `custom:${customRange.startDate}:${customRange.endDate}`
     : range;
-}
-
-function getTodayDateValue() {
-  return getBeijingDateTimeParts(new Date()).date;
-}
-
-function getCustomDateParts(value: string) {
-  const [year = "", month = "", day = ""] = value.split("-");
-
-  return { year, month, day };
-}
-
-function getCalendarCells(year: number, month: number) {
-  const firstDay = new Date(year, month, 1);
-  const startDow = firstDay.getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const daysInPrevMonth = new Date(year, month, 0).getDate();
-  const cells: Array<{ day: number; date: string; outside: boolean }> = [];
-  for (let i = startDow - 1; i >= 0; i--) {
-    const d = daysInPrevMonth - i;
-    const pm = month === 0 ? 11 : month - 1;
-    const py = month === 0 ? year - 1 : year;
-    cells.push({ day: d, date: `${py}-${String(pm + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`, outside: true });
-  }
-  for (let d = 1; d <= daysInMonth; d++) {
-    cells.push({ day: d, date: `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`, outside: false });
-  }
-  const remaining = (7 - cells.length % 7) % 7;
-  const nm = month === 11 ? 0 : month + 1;
-  const ny = month === 11 ? year + 1 : year;
-  for (let d = 1; d <= remaining; d++) {
-    cells.push({ day: d, date: `${ny}-${String(nm + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`, outside: true });
-  }
-  return cells;
 }
 
 export function filterBucketsByRange(
@@ -761,186 +721,6 @@ function ActivityDots() {
   );
 }
 
-function CalendarRangePicker({
-  range,
-  onChange,
-  onConfirm,
-}: {
-  range: CustomDateRange;
-  onChange: (range: CustomDateRange) => void;
-  onConfirm: () => void;
-}) {
-  const [viewBase, setViewBase] = useState(() => {
-    const ref = range.startDate || getTodayDateValue();
-    const p = getCustomDateParts(ref);
-    return { year: Number.parseInt(p.year, 10), month: Number.parseInt(p.month, 10) - 1 };
-  });
-  const [selecting, setSelecting] = useState<string | null>(null);
-
-  const weekDays = ["日", "一", "二", "三", "四", "五", "六"];
-  const monthLabels = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
-
-  function shiftMonth(delta: number) {
-    let { year, month } = viewBase;
-    month += delta;
-    if (month < 0) { month += 12; year--; }
-    if (month > 11) { month -= 12; year++; }
-    setViewBase({ year, month });
-  }
-
-  function goToday() {
-    const p = getCustomDateParts(getTodayDateValue());
-    setViewBase({ year: Number.parseInt(p.year, 10), month: Number.parseInt(p.month, 10) - 1 });
-  }
-
-  function handleDayClick(dateStr: string) {
-    if (selecting) {
-      const start = dateStr < selecting ? dateStr : selecting;
-      const end = dateStr < selecting ? selecting : dateStr;
-      setSelecting(null);
-      onChange({ startDate: start, endDate: end });
-    } else {
-      setSelecting(dateStr);
-    }
-  }
-
-  const todayStr = getTodayDateValue();
-
-  function renderMonth(year: number, month: number) {
-    const cells = getCalendarCells(year, month);
-    const ds = selecting || range.startDate;
-    const de = selecting ? "" : range.endDate;
-    return (
-      <div className="cal-month">
-        <div className="cal-month-title">{year}年 {monthLabels[month]}</div>
-        <div className="cal-weekdays">
-          {weekDays.map((d) => <span key={d}>{d}</span>)}
-        </div>
-        <div className="cal-grid">
-          {cells.map((cell, i) => {
-            let cls = "cal-cell";
-            if (cell.outside) cls += " is-outside";
-            if (cell.date === todayStr) cls += " is-today";
-            if (ds && cell.date === ds) cls += " is-start";
-            if (de && cell.date === de) cls += " is-end";
-            if (ds && de && cell.date > ds && cell.date < de) cls += " is-in-range";
-            if (selecting && cell.date === selecting) cls += " is-pending";
-            return (
-              <button key={i} className={cls} type="button" onClick={() => handleDayClick(cell.date)}>
-                {cell.day}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    );
-  }
-
-  const next = viewBase.month === 11
-    ? { year: viewBase.year + 1, month: 0 }
-    : { year: viewBase.year, month: viewBase.month + 1 };
-  const dispStart = selecting || range.startDate;
-  const dispEnd = selecting ? "" : range.endDate;
-
-  return (
-    <div className="cal-range-picker">
-      <div className="cal-range-header">
-        <div className="cal-range-display">
-          <span className={dispStart ? "is-set" : ""}>{dispStart || "开始日期"}</span>
-          <span className="cal-range-sep">→</span>
-          <span className={dispEnd ? "is-set" : ""}>{dispEnd || "结束日期"}</span>
-        </div>
-        <div className="cal-range-nav">
-          <button type="button" className="cal-today-btn" onClick={goToday}>今天</button>
-          <button type="button" onClick={() => shiftMonth(-1)} aria-label="上一月">‹</button>
-          <button type="button" onClick={() => shiftMonth(1)} aria-label="下一月">›</button>
-        </div>
-      </div>
-      <div className="cal-range-body">
-        {renderMonth(viewBase.year, viewBase.month)}
-        {renderMonth(next.year, next.month)}
-      </div>
-      <div className="cal-range-footer">
-        <button
-          type="button"
-          className="cal-confirm-btn"
-          disabled={!isValidCustomDateRange(range)}
-          onClick={onConfirm}
-        >
-          确定
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function ToolbarRangeSelector<T extends string>({
-  ariaLabel,
-  options,
-  value,
-  onChange,
-  customRange,
-  onCustomRangeChange,
-}: {
-  ariaLabel: string;
-  options: Array<{ value: T; label: string }>;
-  value: T;
-  onChange: (value: T) => void;
-  customRange?: CustomDateRange;
-  onCustomRangeChange?: (range: CustomDateRange) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function handleClickOutside(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    }
-    function handleEscape(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    document.addEventListener("keydown", handleEscape);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("keydown", handleEscape);
-    };
-  }, [open]);
-
-  return (
-    <div ref={containerRef} className="app-time-range" aria-label={ariaLabel}>
-      <div className="app-time-range-buttons">
-        {options.map((option) => (
-          <button
-            key={option.value}
-            className={`app-time-range-button${value === option.value ? " is-selected" : ""}`}
-            type="button"
-            onClick={() => {
-              onChange(option.value);
-              if (option.value === "custom") {
-                if (customRange && onCustomRangeChange && !isValidCustomDateRange(customRange)) {
-                  onCustomRangeChange({ startDate: getTodayDateValue(), endDate: getTodayDateValue() });
-                }
-                setOpen(true);
-              } else {
-                setOpen(false);
-              }
-            }}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
-      {value === "custom" && open && customRange && onCustomRangeChange ? (
-        <CalendarRangePicker range={customRange} onChange={onCustomRangeChange} onConfirm={() => setOpen(false)} />
-      ) : null}
-    </div>
-  );
-}
-
 function isProgressDone(phase: string) {
   return phase.startsWith("完成");
 }
@@ -977,7 +757,9 @@ function TokenUsageView({
   progress,
   range,
   customRange,
-  onBack,
+  onRangeChange,
+  onCustomRangeChange,
+  rangeOptions,
   onRefresh,
 }: {
   report: TokenUsageProbeReport | null;
@@ -985,32 +767,40 @@ function TokenUsageView({
   progress: TokenProbeProgress | null;
   range: TokenUsageRange;
   customRange: CustomDateRange;
-  onBack: () => void;
+  onRangeChange: (range: TokenUsageRange) => void;
+  onCustomRangeChange: (range: CustomDateRange) => void;
+  rangeOptions: Array<{ value: TokenUsageRange; label: string }>;
   onRefresh: () => void;
 }) {
   return (
     <section className="token-usage-view" aria-label="Token usage view">
-      <div className="token-probe-panel">
-        <div className="token-probe-header">
-          <button className="token-back-button" type="button" onClick={onBack}>
-            ← 返回会话
-          </button>
-          <div className="token-probe-actions">
-            <span className="token-probe-badge">只读探测</span>
-            <button className="scan-button" type="button" onClick={onRefresh} disabled={loading}>
-              {loading ? "◷ 探测中" : "↻ 重新探测"}
-            </button>
-          </div>
+      <header className="view-toolbar" data-tauri-drag-region>
+        <div className="view-toolbar-left">
+          <h2 className="view-toolbar-title">Token Usage</h2>
+          <ToolbarRangeSelector
+            ariaLabel="Token usage time range"
+            options={rangeOptions}
+            value={range}
+            onChange={onRangeChange}
+            customRange={customRange}
+            onCustomRangeChange={onCustomRangeChange}
+          />
         </div>
-
+        <div className="view-toolbar-right">
+          <span className="token-probe-badge">只读探测</span>
+          <button className="scan-button" type="button" onClick={onRefresh} disabled={loading}>
+            {loading ? "◷ 探测中" : "↻ 重新探测"}
+          </button>
+        </div>
+      </header>
+      <div className="token-probe-panel">
         <div>
-          <h2>Token Usage 探测</h2>
           <p className="token-probe-description">
             从 Claude Code 和 Codex 的本地历史中只读提取 usage 字段，优先展示精确 token 数据。
           </p>
         </div>
 
-        {loading && !report ? (
+        {loading ? (
           progress ? <TokenProbeProgressPanel progress={progress} /> : (
             <div className="token-probe-loading" role="status">
               正在扫描本地历史 usage 字段...
@@ -1036,7 +826,6 @@ function App() {
   const sourceFilter = useSessionStore((s) => s.sourceFilter);
   const projectFilter = useSessionStore((s) => s.projectFilter);
   const timeRange = useSessionStore((s) => s.timeRange);
-  const lastScannedAt = useSessionStore((s) => s.lastScannedAt);
   const setSessions = useSessionStore((s) => s.setSessions);
   const setDetail = useSessionStore((s) => s.setDetail);
   const setDetailLoading = useSessionStore((s) => s.setDetailLoading);
@@ -1206,82 +995,55 @@ function App() {
     void handleRefresh();
   }, []);
 
+  function handleViewChange(view: AppView) {
+    if (view === "tokenUsage" && activeView !== "tokenUsage") {
+      void handleOpenTokenUsage();
+    } else {
+      setActiveView(view);
+    }
+  }
+
   return (
     <main className="app-shell">
-      <header className="app-toolbar">
-        <div className="app-toolbar-left">
-          <div className="app-logo" aria-hidden="true">O</div>
-          <div>
-            <h1>OmniTrace</h1>
-            <div className="app-status-stack">
-              <span>{sessions.length} 个会话</span>
-              {lastScannedAt ? <span>上次扫描 {lastScannedAt}</span> : null}
-            </div>
-          </div>
-        </div>
-        <div className="app-toolbar-actions">
-          {activeView === "sessions" ? (
-            <ToolbarRangeSelector
-              ariaLabel="会话扫描时间范围"
-              options={sessionScanTimeRanges}
-              value={timeRange}
-              onChange={(value) => handleSessionFilterChange({ timeRange: value })}
-              customRange={sessionCustomRange}
-              onCustomRangeChange={setSessionCustomRange}
+      <AppSidebar activeView={activeView} onViewChange={handleViewChange} />
+      <div className="app-main">
+        <div className="viewer-shell">
+          {activeView === "tokenUsage" ? (
+            <TokenUsageView
+              report={tokenProbeReport}
+              loading={tokenProbeLoading}
+              progress={tokenProbeProgress}
+              range={tokenUsageRange}
+              customRange={tokenCustomRange}
+              onRangeChange={setTokenUsageRange}
+              onCustomRangeChange={setTokenCustomRange}
+              rangeOptions={tokenUsageRanges}
+              onRefresh={() => void handleTokenProbe()}
             />
           ) : (
-            <ToolbarRangeSelector
-              ariaLabel="Token usage time range"
-              options={tokenUsageRanges}
-              value={tokenUsageRange}
-              onChange={setTokenUsageRange}
-              customRange={tokenCustomRange}
-              onCustomRangeChange={setTokenCustomRange}
+            <ThreePaneShell
+              sessions={sessions}
+              selectedId={selectedId}
+              detail={detail}
+              detailLoading={detailLoading}
+              sourceFilter={sourceFilter}
+              projectFilter={projectFilter}
+              scanProgress={sessionScanProgress}
+              onDismissScanProgress={() => setSessionScanProgress(null)}
+              onFilterChange={handleSessionFilterChange}
+              onSelect={selectSession}
+              onDelete={handleDelete}
+              timeRange={timeRange}
+              customRange={sessionCustomRange}
+              onTimeRangeChange={(value) => handleSessionFilterChange({ timeRange: value })}
+              onCustomRangeChange={setSessionCustomRange}
+              rangeOptions={sessionScanTimeRanges}
+              onScan={() => void handleRefresh()}
+              scanLoading={sessionScanLoading}
+              canScan={canUseSessionRange}
             />
           )}
         </div>
-        <div className="app-toolbar-actions app-toolbar-primary-actions">
-          <button className="scan-button" type="button" onClick={() => void handleOpenTokenUsage()}>
-            {tokenProbeLoading ? "◷ 探测中" : "◷ Token 探测"}
-          </button>
-          <button
-            aria-label="↻ 扫描"
-            className="scan-button"
-            type="button"
-            onClick={() => void handleRefresh()}
-            disabled={sessionScanLoading || !canUseSessionRange}
-          >
-            {sessionScanLoading ? "◷ 扫描中" : "↻ 扫描"}
-          </button>
-        </div>
-      </header>
-
-      <div className="viewer-shell">
-        {activeView === "tokenUsage" ? (
-          <TokenUsageView
-            report={tokenProbeReport}
-            loading={tokenProbeLoading}
-            progress={tokenProbeProgress}
-            range={tokenUsageRange}
-            customRange={tokenCustomRange}
-            onBack={() => setActiveView("sessions")}
-            onRefresh={() => void handleTokenProbe()}
-          />
-        ) : (
-          <ThreePaneShell
-            sessions={sessions}
-            selectedId={selectedId}
-            detail={detail}
-            detailLoading={detailLoading}
-            sourceFilter={sourceFilter}
-            projectFilter={projectFilter}
-            scanProgress={sessionScanProgress}
-            onDismissScanProgress={() => setSessionScanProgress(null)}
-            onFilterChange={handleSessionFilterChange}
-            onSelect={selectSession}
-            onDelete={handleDelete}
-          />
-        )}
       </div>
     </main>
   );
