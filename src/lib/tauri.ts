@@ -4,7 +4,6 @@ import type {
   SessionDetail,
   SessionListItem,
   SessionMessage,
-  TimeRange,
   TokenUsageBucket,
   TokenUsageProbeReport,
   TokenUsageSample,
@@ -99,7 +98,7 @@ function mapMessageKind(kind: string): SessionMessage["kind"] {
   return "message";
 }
 
-export async function scanSources(timeRange: TimeRange): Promise<SessionListItem[]> {
+export async function scanSources(timeRange: string): Promise<SessionListItem[]> {
   const sessions = await invoke<SessionListItemDto[]>("scan_sources", { timeRange });
 
   return sessions.map((session) => ({

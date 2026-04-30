@@ -20,6 +20,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 
 import App, {
   buildHourlySeries,
+  filterBucketsByRange,
   filterVisibleTokenDetailBuckets,
   getSmoothTokenLinePath,
   getTokenLineHoverIndex,
@@ -84,6 +85,22 @@ describe("App", () => {
     });
 
     return { promise, resolve, reject };
+  }
+
+  function createTokenBucket(date: string) {
+    return {
+      date,
+      sourceId: "",
+      modelId: "",
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheCreationTokens: 0,
+      cacheReadTokens: 0,
+      cacheTokens: 0,
+      reasoningTokens: 0,
+      totalTokens: 0,
+      recordsWithUsage: 0,
+    };
   }
 
   it("renders live session scan progress from backend events", async () => {
@@ -248,6 +265,21 @@ describe("App", () => {
     expect(await screen.findByRole("button", { name: "Claude: week" })).toBeInTheDocument();
     expect(scanSourcesMock).toHaveBeenNthCalledWith(1, "today");
     expect(scanSourcesMock).toHaveBeenNthCalledWith(2, "7d");
+  });
+
+  it("scans sessions with a custom date range", async () => {
+    render(<App />);
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "自定义" }));
+    expect(screen.getByRole("group", { name: "自定义时间范围" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "开始月份 04" }));
+    await user.click(screen.getByRole("button", { name: "开始日期 01" }));
+    await user.click(screen.getByRole("button", { name: "结束月份 04" }));
+    await user.click(screen.getByRole("button", { name: "结束日期 30" }));
+    await user.click(screen.getByRole("button", { name: "↻ 扫描" }));
+
+    expect(scanSourcesMock).toHaveBeenLastCalledWith("custom:2026-04-01:2026-04-30");
   });
 
   it("opens token usage as a standalone view and returns to sessions", async () => {
@@ -607,6 +639,20 @@ describe("App", () => {
 
     expect(screen.getByRole("button", { name: "claude-sonnet-4" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "gpt-5.4-codex" })).not.toBeInTheDocument();
+  });
+
+  it("filters token buckets by custom date range", () => {
+    const buckets = [
+      { ...createTokenBucket("2026-03-31"), totalTokens: 10 },
+      { ...createTokenBucket("2026-04-01"), totalTokens: 20 },
+      { ...createTokenBucket("2026-04-15"), totalTokens: 30 },
+      { ...createTokenBucket("2026-05-01"), totalTokens: 40 },
+    ];
+
+    expect(filterBucketsByRange(buckets, "custom", {
+      startDate: "2026-04-01",
+      endDate: "2026-04-30",
+    }).map((bucket) => bucket.date)).toEqual(["2026-04-01", "2026-04-15"]);
   });
 
   it("limits today's hourly series to the current hour and hides zero detail rows", () => {

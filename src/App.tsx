@@ -6,6 +6,7 @@ import { ThreePaneShell } from "./features/layout/ThreePaneShell";
 import { deleteSession, getSessionDetail, probeTokenUsageSources, scanSources } from "./lib/tauri";
 import { useSessionStore } from "./stores/useSessionStore";
 import type {
+  CustomDateRange,
   SessionScanProgress,
   TimeRange,
   TokenProbeProgress,
@@ -14,7 +15,7 @@ import type {
 } from "./types/session";
 
 type AppView = "sessions" | "tokenUsage";
-type TokenUsageRange = "today" | "7d" | "30d" | "90d" | "all";
+type TokenUsageRange = TimeRange;
 type TokenUsageSourceFilter = "all" | "claude_code" | "codex";
 type TokenLineMetric = {
   key: keyof Pick<TokenUsageBucket, "inputTokens" | "outputTokens" | "cacheTokens" | "reasoningTokens">;
@@ -29,7 +30,7 @@ const tokenUsageRanges: Array<{ value: TokenUsageRange; label: string }> = [
   { value: "today", label: "当日" },
   { value: "7d", label: "最近 7 天" },
   { value: "30d", label: "最近 30 天" },
-  { value: "90d", label: "最近 90 天" },
+  { value: "custom", label: "自定义" },
   { value: "all", label: "全部" },
 ];
 const tokenUsageTimeZone = "Asia/Shanghai";
@@ -37,6 +38,7 @@ const sessionScanTimeRanges: Array<{ value: TimeRange; label: string }> = [
   { value: "today", label: "当日" },
   { value: "7d", label: "最近 7 天" },
   { value: "30d", label: "最近 30 天" },
+  { value: "custom", label: "自定义" },
   { value: "all", label: "全部" },
 ];
 const tokenLineMetrics: TokenLineMetric[] = [
@@ -75,7 +77,59 @@ function formatCompactTokenNumber(value: number) {
   return `${formatted}${unit.suffix}`;
 }
 
-function filterBucketsByRange(days: TokenUsageBucket[], range: TokenUsageRange) {
+function isValidDateValue(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function isValidCustomDateRange(range: CustomDateRange) {
+  return isValidDateValue(range.startDate) && isValidDateValue(range.endDate) && range.startDate <= range.endDate;
+}
+
+function serializeTimeRange(range: TimeRange, customRange: CustomDateRange) {
+  return range === "custom" && isValidCustomDateRange(customRange)
+    ? `custom:${customRange.startDate}:${customRange.endDate}`
+    : range;
+}
+
+function getTodayDateValue() {
+  return getBeijingDateTimeParts(new Date()).date;
+}
+
+function getCustomDateParts(value: string) {
+  const [year = "", month = "", day = ""] = value.split("-");
+
+  return { year, month, day };
+}
+
+function getCalendarCells(year: number, month: number) {
+  const firstDay = new Date(year, month, 1);
+  const startDow = firstDay.getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const daysInPrevMonth = new Date(year, month, 0).getDate();
+  const cells: Array<{ day: number; date: string; outside: boolean }> = [];
+  for (let i = startDow - 1; i >= 0; i--) {
+    const d = daysInPrevMonth - i;
+    const pm = month === 0 ? 11 : month - 1;
+    const py = month === 0 ? year - 1 : year;
+    cells.push({ day: d, date: `${py}-${String(pm + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`, outside: true });
+  }
+  for (let d = 1; d <= daysInMonth; d++) {
+    cells.push({ day: d, date: `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`, outside: false });
+  }
+  const remaining = (7 - cells.length % 7) % 7;
+  const nm = month === 11 ? 0 : month + 1;
+  const ny = month === 11 ? year + 1 : year;
+  for (let d = 1; d <= remaining; d++) {
+    cells.push({ day: d, date: `${ny}-${String(nm + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`, outside: true });
+  }
+  return cells;
+}
+
+export function filterBucketsByRange(
+  days: TokenUsageBucket[],
+  range: TokenUsageRange,
+  customRange: CustomDateRange = { startDate: "", endDate: "" },
+) {
   const sortedDays = [...days]
     .filter((day) => /^\d{4}-\d{2}-\d{2}$/.test(day.date))
     .sort((a, b) => a.date.localeCompare(b.date));
@@ -85,12 +139,18 @@ function filterBucketsByRange(days: TokenUsageBucket[], range: TokenUsageRange) 
     return latestDay ? sortedDays.filter((day) => day.date === latestDay) : [];
   }
 
+  if (range === "custom") {
+    return isValidCustomDateRange(customRange)
+      ? sortedDays.filter((day) => day.date >= customRange.startDate && day.date <= customRange.endDate)
+      : [];
+  }
+
   if (range === "all" || sortedDays.length === 0) {
     return sortedDays;
   }
 
   const latest = new Date(`${sortedDays[sortedDays.length - 1].date}T00:00:00Z`);
-  const rangeDays = range === "7d" ? 7 : range === "30d" ? 30 : 90;
+  const rangeDays = range === "7d" ? 7 : 30;
   latest.setUTCDate(latest.getUTCDate() - rangeDays + 1);
   const startDate = latest.toISOString().slice(0, 10);
 
@@ -382,19 +442,21 @@ function formatTokenTooltip(bucket: TokenUsageBucket) {
 function TokenUsageSummary({
   report,
   range,
+  customRange,
 }: {
   report: TokenUsageProbeReport;
   range: TokenUsageRange;
+  customRange: CustomDateRange;
 }) {
   const [sourceFilter, setSourceFilter] = useState<TokenUsageSourceFilter>("all");
   const [modelFilter, setModelFilter] = useState("all");
   const [activeHourlyIndex, setActiveHourlyIndex] = useState<number | null>(null);
   const isHourly = range === "today";
   const latestDay = getLatestUsageDay(report.days);
-  const filteredDays = filterBucketsByRange(report.days, range);
+  const filteredDays = filterBucketsByRange(report.days, range, customRange);
   const baseModelBuckets = isHourly
     ? filterHourlyBucketsByDay(report.byModelByHour, latestDay)
-    : filterBucketsByRange(report.byModelByDay, range);
+    : filterBucketsByRange(report.byModelByDay, range, customRange);
   const filteredModelBuckets = filterTokenBuckets(baseModelBuckets, sourceFilter, modelFilter);
   const chartBuckets = sourceFilter === "all" && modelFilter === "all"
     ? (isHourly ? buildHourlySeries(report.hours, latestDay) : filteredDays)
@@ -699,31 +761,182 @@ function ActivityDots() {
   );
 }
 
+function CalendarRangePicker({
+  range,
+  onChange,
+  onConfirm,
+}: {
+  range: CustomDateRange;
+  onChange: (range: CustomDateRange) => void;
+  onConfirm: () => void;
+}) {
+  const [viewBase, setViewBase] = useState(() => {
+    const ref = range.startDate || getTodayDateValue();
+    const p = getCustomDateParts(ref);
+    return { year: Number.parseInt(p.year, 10), month: Number.parseInt(p.month, 10) - 1 };
+  });
+  const [selecting, setSelecting] = useState<string | null>(null);
+
+  const weekDays = ["日", "一", "二", "三", "四", "五", "六"];
+  const monthLabels = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
+
+  function shiftMonth(delta: number) {
+    let { year, month } = viewBase;
+    month += delta;
+    if (month < 0) { month += 12; year--; }
+    if (month > 11) { month -= 12; year++; }
+    setViewBase({ year, month });
+  }
+
+  function goToday() {
+    const p = getCustomDateParts(getTodayDateValue());
+    setViewBase({ year: Number.parseInt(p.year, 10), month: Number.parseInt(p.month, 10) - 1 });
+  }
+
+  function handleDayClick(dateStr: string) {
+    if (selecting) {
+      const start = dateStr < selecting ? dateStr : selecting;
+      const end = dateStr < selecting ? selecting : dateStr;
+      setSelecting(null);
+      onChange({ startDate: start, endDate: end });
+    } else {
+      setSelecting(dateStr);
+    }
+  }
+
+  const todayStr = getTodayDateValue();
+
+  function renderMonth(year: number, month: number) {
+    const cells = getCalendarCells(year, month);
+    const ds = selecting || range.startDate;
+    const de = selecting ? "" : range.endDate;
+    return (
+      <div className="cal-month">
+        <div className="cal-month-title">{year}年 {monthLabels[month]}</div>
+        <div className="cal-weekdays">
+          {weekDays.map((d) => <span key={d}>{d}</span>)}
+        </div>
+        <div className="cal-grid">
+          {cells.map((cell, i) => {
+            let cls = "cal-cell";
+            if (cell.outside) cls += " is-outside";
+            if (cell.date === todayStr) cls += " is-today";
+            if (ds && cell.date === ds) cls += " is-start";
+            if (de && cell.date === de) cls += " is-end";
+            if (ds && de && cell.date > ds && cell.date < de) cls += " is-in-range";
+            if (selecting && cell.date === selecting) cls += " is-pending";
+            return (
+              <button key={i} className={cls} type="button" onClick={() => handleDayClick(cell.date)}>
+                {cell.day}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  const next = viewBase.month === 11
+    ? { year: viewBase.year + 1, month: 0 }
+    : { year: viewBase.year, month: viewBase.month + 1 };
+  const dispStart = selecting || range.startDate;
+  const dispEnd = selecting ? "" : range.endDate;
+
+  return (
+    <div className="cal-range-picker">
+      <div className="cal-range-header">
+        <div className="cal-range-display">
+          <span className={dispStart ? "is-set" : ""}>{dispStart || "开始日期"}</span>
+          <span className="cal-range-sep">→</span>
+          <span className={dispEnd ? "is-set" : ""}>{dispEnd || "结束日期"}</span>
+        </div>
+        <div className="cal-range-nav">
+          <button type="button" className="cal-today-btn" onClick={goToday}>今天</button>
+          <button type="button" onClick={() => shiftMonth(-1)} aria-label="上一月">‹</button>
+          <button type="button" onClick={() => shiftMonth(1)} aria-label="下一月">›</button>
+        </div>
+      </div>
+      <div className="cal-range-body">
+        {renderMonth(viewBase.year, viewBase.month)}
+        {renderMonth(next.year, next.month)}
+      </div>
+      <div className="cal-range-footer">
+        <button
+          type="button"
+          className="cal-confirm-btn"
+          disabled={!isValidCustomDateRange(range)}
+          onClick={onConfirm}
+        >
+          确定
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ToolbarRangeSelector<T extends string>({
   ariaLabel,
   options,
   value,
   onChange,
+  customRange,
+  onCustomRangeChange,
 }: {
   ariaLabel: string;
   options: Array<{ value: T; label: string }>;
   value: T;
   onChange: (value: T) => void;
+  customRange?: CustomDateRange;
+  onCustomRangeChange?: (range: CustomDateRange) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    function handleEscape(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [open]);
+
   return (
-    <div className="app-time-range" aria-label={ariaLabel}>
+    <div ref={containerRef} className="app-time-range" aria-label={ariaLabel}>
       <div className="app-time-range-buttons">
         {options.map((option) => (
           <button
             key={option.value}
             className={`app-time-range-button${value === option.value ? " is-selected" : ""}`}
             type="button"
-            onClick={() => onChange(option.value)}
+            onClick={() => {
+              onChange(option.value);
+              if (option.value === "custom") {
+                if (customRange && onCustomRangeChange && !isValidCustomDateRange(customRange)) {
+                  onCustomRangeChange({ startDate: getTodayDateValue(), endDate: getTodayDateValue() });
+                }
+                setOpen(true);
+              } else {
+                setOpen(false);
+              }
+            }}
           >
             {option.label}
           </button>
         ))}
       </div>
+      {value === "custom" && open && customRange && onCustomRangeChange ? (
+        <CalendarRangePicker range={customRange} onChange={onCustomRangeChange} onConfirm={() => setOpen(false)} />
+      ) : null}
     </div>
   );
 }
@@ -763,6 +976,7 @@ function TokenUsageView({
   loading,
   progress,
   range,
+  customRange,
   onBack,
   onRefresh,
 }: {
@@ -770,6 +984,7 @@ function TokenUsageView({
   loading: boolean;
   progress: TokenProbeProgress | null;
   range: TokenUsageRange;
+  customRange: CustomDateRange;
   onBack: () => void;
   onRefresh: () => void;
 }) {
@@ -802,7 +1017,7 @@ function TokenUsageView({
             </div>
           )
         ) : report ? (
-          <TokenUsageSummary report={report} range={range} />
+          <TokenUsageSummary report={report} range={range} customRange={customRange} />
         ) : (
           <div className="token-probe-loading" role="status">
             暂无探测结果，请点击重新探测。
@@ -833,15 +1048,22 @@ function App() {
   const [tokenProbeReport, setTokenProbeReport] = useState<TokenUsageProbeReport | null>(null);
   const [tokenProbeLoading, setTokenProbeLoading] = useState(false);
   const [tokenUsageRange, setTokenUsageRange] = useState<TokenUsageRange>("today");
+  const [sessionCustomRange, setSessionCustomRange] = useState<CustomDateRange>({ startDate: "", endDate: "" });
+  const [tokenCustomRange, setTokenCustomRange] = useState<CustomDateRange>({ startDate: "", endDate: "" });
   const [sessionScanLoading, setSessionScanLoading] = useState(false);
   const [sessionScanProgress, setSessionScanProgress] = useState<SessionScanProgress | null>(null);
   const [tokenProbeProgress, setTokenProbeProgress] = useState<TokenProbeProgress | null>(null);
+  const canUseSessionRange = timeRange !== "custom" || isValidCustomDateRange(sessionCustomRange);
 
   async function handleRefresh() {
+    if (!canUseSessionRange) {
+      return;
+    }
+
     setSessionScanLoading(true);
     setSessionScanProgress(null);
     try {
-      const nextSessions = await scanSources(timeRange);
+      const nextSessions = await scanSources(serializeTimeRange(timeRange, sessionCustomRange));
       setSessions(nextSessions);
       markScannedNow();
       setSessionScanProgress((current) => current ? { ...current, phase: "完成" } : null);
@@ -1004,6 +1226,8 @@ function App() {
               options={sessionScanTimeRanges}
               value={timeRange}
               onChange={(value) => handleSessionFilterChange({ timeRange: value })}
+              customRange={sessionCustomRange}
+              onCustomRangeChange={setSessionCustomRange}
             />
           ) : (
             <ToolbarRangeSelector
@@ -1011,6 +1235,8 @@ function App() {
               options={tokenUsageRanges}
               value={tokenUsageRange}
               onChange={setTokenUsageRange}
+              customRange={tokenCustomRange}
+              onCustomRangeChange={setTokenCustomRange}
             />
           )}
         </div>
@@ -1023,7 +1249,7 @@ function App() {
             className="scan-button"
             type="button"
             onClick={() => void handleRefresh()}
-            disabled={sessionScanLoading}
+            disabled={sessionScanLoading || !canUseSessionRange}
           >
             {sessionScanLoading ? "◷ 扫描中" : "↻ 扫描"}
           </button>
@@ -1037,6 +1263,7 @@ function App() {
             loading={tokenProbeLoading}
             progress={tokenProbeProgress}
             range={tokenUsageRange}
+            customRange={tokenCustomRange}
             onBack={() => setActiveView("sessions")}
             onRefresh={() => void handleTokenProbe()}
           />

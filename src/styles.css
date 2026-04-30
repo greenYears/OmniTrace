@@ -56,6 +56,8 @@ body {
 }
 
 .app-toolbar {
+  position: relative;
+  z-index: 30;
   display: grid;
   grid-template-columns: minmax(280px, 1fr) auto auto;
   align-items: center;
@@ -120,6 +122,7 @@ body {
 }
 
 .app-toolbar-actions {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -128,6 +131,7 @@ body {
 }
 
 .app-time-range {
+  position: relative;
   display: inline-flex;
   align-items: center;
   padding: 4px;
@@ -164,6 +168,212 @@ body {
 .app-time-range-button.is-selected {
   background: rgba(155, 216, 208, 0.14);
   color: var(--terminal-accent);
+}
+
+.cal-range-picker {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 20;
+  border: 1px solid var(--terminal-border-strong);
+  border-radius: 16px;
+  padding: 16px;
+  background: rgba(15, 16, 26, 0.98);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(155, 216, 208, 0.05);
+  white-space: normal;
+}
+
+.cal-range-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--terminal-border);
+}
+
+.cal-range-display {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--terminal-dim);
+}
+
+.cal-range-display .is-set {
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(155, 216, 208, 0.1);
+  color: var(--terminal-accent);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-range-sep {
+  color: var(--terminal-dim);
+  font-size: 10px;
+}
+
+.cal-range-nav {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.cal-range-nav button {
+  border: 1px solid var(--terminal-border);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--terminal-text);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 140ms ease;
+}
+
+.cal-range-nav button:hover {
+  border-color: rgba(155, 216, 208, 0.34);
+  color: var(--terminal-accent);
+  background: rgba(155, 216, 208, 0.06);
+}
+
+.cal-today-btn {
+  font-size: 11px !important;
+  width: auto !important;
+  padding: 0 10px !important;
+  margin-right: 6px;
+}
+
+.cal-range-body {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+
+.cal-month {
+  min-width: 224px;
+}
+
+.cal-month-title {
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--terminal-text);
+  margin-bottom: 10px;
+  letter-spacing: 0.5px;
+}
+
+.cal-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  margin-bottom: 4px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(167, 176, 213, 0.08);
+}
+
+.cal-weekdays span {
+  text-align: center;
+  font-size: 11px;
+  color: var(--terminal-dim);
+  padding: 2px 0;
+}
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+}
+
+.cal-cell {
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--terminal-text);
+  font: inherit;
+  font-size: 12px;
+  padding: 7px 0;
+  cursor: pointer;
+  transition: all 120ms ease;
+  text-align: center;
+  position: relative;
+}
+
+.cal-cell.is-outside {
+  color: var(--terminal-dim);
+  opacity: 0.3;
+}
+
+.cal-cell:hover:not(.is-outside) {
+  background: rgba(155, 216, 208, 0.12);
+  color: var(--terminal-accent);
+}
+
+.cal-cell.is-today:not(.is-start):not(.is-end):not(.is-pending) {
+  box-shadow: inset 0 0 0 1.5px rgba(155, 216, 208, 0.45);
+  color: var(--terminal-accent);
+  font-weight: 600;
+}
+
+.cal-cell.is-start,
+.cal-cell.is-end {
+  background: rgba(155, 216, 208, 0.28);
+  color: var(--terminal-accent);
+  font-weight: 600;
+}
+
+.cal-cell.is-in-range {
+  background: rgba(155, 216, 208, 0.1);
+  color: var(--terminal-accent);
+  border-radius: 4px;
+}
+
+.cal-cell.is-pending {
+  background: rgba(155, 216, 208, 0.18);
+  color: var(--terminal-accent);
+  font-weight: 600;
+  animation: cal-pending-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes cal-pending-pulse {
+  0%, 100% { background: rgba(155, 216, 208, 0.18); }
+  50% { background: rgba(155, 216, 208, 0.28); }
+}
+
+.cal-range-footer {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--terminal-border);
+}
+
+.cal-confirm-btn {
+  width: 100%;
+  border: 1px solid rgba(155, 216, 208, 0.28);
+  border-radius: 8px;
+  padding: 7px 18px;
+  background: rgba(155, 216, 208, 0.1);
+  color: var(--terminal-accent);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 140ms ease;
+}
+
+.cal-confirm-btn:hover:not(:disabled) {
+  background: rgba(155, 216, 208, 0.2);
+  box-shadow: 0 0 16px rgba(155, 216, 208, 0.12);
+}
+
+.cal-confirm-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
 }
 
 .scan-button {

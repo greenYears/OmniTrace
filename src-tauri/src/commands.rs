@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::sync::{LazyLock, Mutex};
 
-use chrono::{DateTime, Duration, FixedOffset, Utc};
+use chrono::{DateTime, Duration, FixedOffset, NaiveDate, Utc};
 use rusqlite::{Connection, OptionalExtension};
 use serde::Deserialize;
 use serde::Serialize;
@@ -171,10 +171,26 @@ fn filter_session_items_by_time_range(
         return sessions;
     };
     let today = now.date_naive();
-    let start_date = match time_range {
-        "today" => today,
-        "7d" => today - Duration::days(6),
-        "30d" => today - Duration::days(29),
+    let (start_date, end_date) = match time_range {
+        "today" => (today, today),
+        "7d" => (today - Duration::days(6), today),
+        "30d" => (today - Duration::days(29), today),
+        value if value.starts_with("custom:") => {
+            let parts = value.split(':').collect::<Vec<_>>();
+            if parts.len() != 3 {
+                return Vec::new();
+            }
+            let Ok(start_date) = NaiveDate::parse_from_str(parts[1], "%Y-%m-%d") else {
+                return Vec::new();
+            };
+            let Ok(end_date) = NaiveDate::parse_from_str(parts[2], "%Y-%m-%d") else {
+                return Vec::new();
+            };
+            if start_date > end_date {
+                return Vec::new();
+            }
+            (start_date, end_date)
+        }
         _ => return sessions,
     };
 
@@ -184,7 +200,7 @@ fn filter_session_items_by_time_range(
             DateTime::parse_from_rfc3339(&session.updated_at)
                 .map(|updated_at| {
                     let updated_date = updated_at.with_timezone(&beijing_offset()).date_naive();
-                    updated_date >= start_date && updated_date <= today
+                    updated_date >= start_date && updated_date <= end_date
                 })
                 .unwrap_or(false)
         })
@@ -479,5 +495,22 @@ mod tests {
 
         let all = filter_session_items_by_time_range(sessions.clone(), Some("all"), now);
         assert_eq!(all.len(), 4);
+
+        let custom = filter_session_items_by_time_range(
+            sessions.clone(),
+            Some("custom:2026-04-22:2026-04-28"),
+            now,
+        );
+        assert_eq!(
+            custom
+                .iter()
+                .map(|item| item.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["today", "midnight", "week"]
+        );
+
+        let invalid =
+            filter_session_items_by_time_range(sessions, Some("custom:2026-04-29:2026-04-01"), now);
+        assert!(invalid.is_empty());
     }
 }

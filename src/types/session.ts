@@ -1,4 +1,9 @@
-export type TimeRange = "today" | "all" | "7d" | "30d";
+export type TimeRange = "today" | "all" | "7d" | "30d" | "custom";
+
+export type CustomDateRange = {
+  startDate: string;
+  endDate: string;
+};
 
 export type SourceFilter = "all" | "claude_code" | "codex";
 
