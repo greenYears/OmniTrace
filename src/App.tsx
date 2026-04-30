@@ -1,5 +1,5 @@
 import "./styles.css";
-import { startTransition, useEffect, useRef, useState } from "react";
+import { startTransition, type PointerEvent, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 
 import { ThreePaneShell } from "./features/layout/ThreePaneShell";
@@ -16,6 +16,14 @@ import type {
 type AppView = "sessions" | "tokenUsage";
 type TokenUsageRange = "today" | "7d" | "30d" | "90d" | "all";
 type TokenUsageSourceFilter = "all" | "claude_code" | "codex";
+type TokenLineMetric = {
+  key: keyof Pick<TokenUsageBucket, "inputTokens" | "outputTokens" | "cacheTokens" | "reasoningTokens">;
+  name: "input" | "output" | "cache" | "reasoning";
+};
+type TokenLinePoint = {
+  x: number;
+  y: number;
+};
 
 const tokenUsageRanges: Array<{ value: TokenUsageRange; label: string }> = [
   { value: "today", label: "当日" },
@@ -30,6 +38,12 @@ const sessionScanTimeRanges: Array<{ value: TimeRange; label: string }> = [
   { value: "7d", label: "最近 7 天" },
   { value: "30d", label: "最近 30 天" },
   { value: "all", label: "全部" },
+];
+const tokenLineMetrics: TokenLineMetric[] = [
+  { key: "inputTokens", name: "input" },
+  { key: "outputTokens", name: "output" },
+  { key: "cacheTokens", name: "cache" },
+  { key: "reasoningTokens", name: "reasoning" },
 ];
 
 function formatTokenCount(value: number) {
@@ -152,6 +166,95 @@ export function buildHourlySeries(hours: TokenUsageBucket[], day: string, now = 
 
 export function filterVisibleTokenDetailBuckets(buckets: TokenUsageBucket[], isHourly: boolean) {
   return isHourly ? buckets.filter((bucket) => bucket.totalTokens > 0) : buckets;
+}
+
+export function getTokenLineHoverIndex(
+  pointerX: number,
+  chartLeft: number,
+  chartWidth: number,
+  bucketCount: number,
+) {
+  if (chartWidth <= 0 || bucketCount <= 0) {
+    return null;
+  }
+
+  const relativeX = Math.min(Math.max(pointerX - chartLeft, 0), chartWidth - 0.01);
+  const ratio = relativeX / chartWidth;
+
+  return Math.min(bucketCount - 1, Math.max(0, Math.floor(ratio * bucketCount)));
+}
+
+export function getTokenLinePointX(index: number, bucketCount: number) {
+  if (bucketCount <= 1) {
+    return 50;
+  }
+
+  return ((index + 0.5) / bucketCount) * 100;
+}
+
+function formatSvgNumber(value: number) {
+  return Number.parseFloat(value.toFixed(3)).toString();
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+export function getSmoothTokenLinePath(points: TokenLinePoint[]) {
+  if (points.length === 0) {
+    return "";
+  }
+
+  if (points.length === 1) {
+    return `M ${formatSvgNumber(points[0].x)} ${formatSvgNumber(points[0].y)}`;
+  }
+
+  const commands = [`M ${formatSvgNumber(points[0].x)} ${formatSvgNumber(points[0].y)}`];
+
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const previous = points[index - 1] ?? points[index];
+    const current = points[index];
+    const next = points[index + 1];
+    const afterNext = points[index + 2] ?? next;
+    const minY = Math.min(current.y, next.y);
+    const maxY = Math.max(current.y, next.y);
+    const controlOne = {
+      x: current.x + (next.x - previous.x) / 6,
+      y: clampNumber(current.y + (next.y - previous.y) / 6, minY, maxY),
+    };
+    const controlTwo = {
+      x: next.x - (afterNext.x - current.x) / 6,
+      y: clampNumber(next.y - (afterNext.y - current.y) / 6, minY, maxY),
+    };
+
+    commands.push([
+      "C",
+      formatSvgNumber(controlOne.x),
+      formatSvgNumber(controlOne.y),
+      formatSvgNumber(controlTwo.x),
+      formatSvgNumber(controlTwo.y),
+      formatSvgNumber(next.x),
+      formatSvgNumber(next.y),
+    ].join(" "));
+  }
+
+  return commands.join(" ");
+}
+
+function getSmoothTokenAreaPath(points: TokenLinePoint[], baselineY: number) {
+  if (points.length === 0) {
+    return "";
+  }
+
+  const firstX = points[0].x;
+  const lastX = points[points.length - 1].x;
+
+  return [
+    getSmoothTokenLinePath(points),
+    `L ${formatSvgNumber(lastX)} ${formatSvgNumber(baselineY)}`,
+    `L ${formatSvgNumber(firstX)} ${formatSvgNumber(baselineY)}`,
+    "Z",
+  ].join(" ");
 }
 
 function getLatestUsageDay(days: TokenUsageBucket[]) {
@@ -285,6 +388,7 @@ function TokenUsageSummary({
 }) {
   const [sourceFilter, setSourceFilter] = useState<TokenUsageSourceFilter>("all");
   const [modelFilter, setModelFilter] = useState("all");
+  const [activeHourlyIndex, setActiveHourlyIndex] = useState<number | null>(null);
   const isHourly = range === "today";
   const latestDay = getLatestUsageDay(report.days);
   const filteredDays = filterBucketsByRange(report.days, range);
@@ -321,6 +425,27 @@ function TokenUsageSummary({
     }
   }, [modelFilter, modelOptions, sourceFilter, sourceOptions]);
   const maxChartTotal = Math.max(...chartBuckets.map((bucket) => bucket.totalTokens), 1);
+  const maxLineValue = Math.max(
+    ...chartBuckets.flatMap((bucket) => tokenLineMetrics.map((metric) => bucket[metric.key])),
+    1,
+  );
+  const getLineY = (value: number) => 92 - (value / maxLineValue) * 84;
+  const lineSeries = tokenLineMetrics.map((metric) => {
+    const points = chartBuckets.map((bucket, index) => ({
+      x: getTokenLinePointX(index, chartBuckets.length),
+      y: getLineY(bucket[metric.key]),
+    }));
+
+    return {
+      ...metric,
+      path: getSmoothTokenLinePath(points),
+      areaPath: getSmoothTokenAreaPath(points, 92),
+    };
+  });
+  const activeHourlyBucket = activeHourlyIndex === null ? null : chartBuckets[activeHourlyIndex] ?? null;
+  const activeHourlyLeft = activeHourlyIndex === null || chartBuckets.length === 0
+    ? 50
+    : Math.min(Math.max(((activeHourlyIndex + 0.5) / chartBuckets.length) * 100, 6), 94);
   const detailBuckets = filterVisibleTokenDetailBuckets(chartBuckets, isHourly);
   const chartTitle = isHourly ? "按小时消耗" : "按天消耗";
   const chartAriaLabel = isHourly ? "按小时 token 消耗折线图" : "按天 token 消耗柱状图";
@@ -334,6 +459,10 @@ function TokenUsageSummary({
     { label: "缓存", value: totals.cacheTokens, detail: `创建 ${formatTokenNumber(totals.cacheCreationTokens)} · 读取 ${formatTokenNumber(totals.cacheReadTokens)}`, accent: "cache" },
     { label: "思考", value: totals.reasoningTokens, accent: "reasoning" },
   ];
+  const handleTokenLinePointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    setActiveHourlyIndex(getTokenLineHoverIndex(event.clientX, rect.left, rect.width, chartBuckets.length));
+  };
 
   return (
     <>
@@ -410,32 +539,56 @@ function TokenUsageSummary({
           isHourly ? (
             <div className="token-line-chart" aria-label={chartAriaLabel}>
               <svg className="token-line-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-                <polyline
-                  className="token-line-path"
-                  points={chartBuckets.map((bucket, index) => {
-                    const x = chartBuckets.length > 1 ? (index / (chartBuckets.length - 1)) * 100 : 0;
-                    const y = 92 - (bucket.totalTokens / maxChartTotal) * 84;
-                    return `${x},${y}`;
-                  }).join(" ")}
-                />
+                {lineSeries.map((series) => (
+                  <path
+                    key={`${series.name}-area`}
+                    className={`token-line-area token-line-area-${series.name}`}
+                    d={series.areaPath}
+                  />
+                ))}
+                {lineSeries.map((series) => (
+                  <path
+                    key={`${series.name}-path`}
+                    className={`token-line-path token-line-path-${series.name}`}
+                    d={series.path}
+                  />
+                ))}
               </svg>
-              <div className="token-line-points">
+              <div
+                className="token-line-hitboxes"
+                onPointerMove={handleTokenLinePointerMove}
+                onPointerLeave={() => setActiveHourlyIndex(null)}
+              >
                 {chartBuckets.map((bucket, index) => {
                   const tooltip = formatTokenTooltip(bucket);
-                  const x = chartBuckets.length > 1 ? (index / (chartBuckets.length - 1)) * 100 : 0;
-                  const y = 92 - (bucket.totalTokens / maxChartTotal) * 84;
+                  const width = 100 / chartBuckets.length;
 
                   return (
                     <div
                       key={bucket.date}
-                      className={`token-line-point${bucket.totalTokens > 0 ? " has-usage" : ""}`}
+                      className={[
+                        "token-line-hitbox",
+                        bucket.totalTokens > 0 ? "has-usage" : "",
+                        activeHourlyIndex === index ? "is-active" : "",
+                      ].filter(Boolean).join(" ")}
+                      aria-label={tooltip}
                       data-tooltip={tooltip}
-                      style={{ left: `${x}%`, top: `${y}%` }}
-                      title={tooltip}
+                      onFocus={() => setActiveHourlyIndex(index)}
+                      onBlur={() => setActiveHourlyIndex(null)}
+                      style={{ left: `${index * width}%`, width: `${width}%` }}
                       tabIndex={0}
                     />
                   );
                 })}
+                {activeHourlyBucket ? (
+                  <div
+                    className="token-line-tooltip"
+                    role="status"
+                    style={{ left: `${activeHourlyLeft}%` }}
+                  >
+                    {formatTokenTooltip(activeHourlyBucket)}
+                  </div>
+                ) : null}
               </div>
               <div className="token-line-axis">
                 {chartBuckets.map((bucket) => (

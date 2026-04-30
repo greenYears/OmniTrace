@@ -18,7 +18,13 @@ vi.mock("@tauri-apps/api/event", () => ({
   listen: eventMock.listen,
 }));
 
-import App, { buildHourlySeries, filterVisibleTokenDetailBuckets } from "./App";
+import App, {
+  buildHourlySeries,
+  filterVisibleTokenDetailBuckets,
+  getSmoothTokenLinePath,
+  getTokenLineHoverIndex,
+  getTokenLinePointX,
+} from "./App";
 import { getSessionDetail, probeTokenUsageSources, scanSources } from "./lib/tauri";
 import { useSessionStore } from "./stores/useSessionStore";
 
@@ -392,7 +398,7 @@ describe("App", () => {
       samples: [],
     });
 
-    render(<App />);
+    const { container } = render(<App />);
 
     expect(await screen.findByText("未找到符合条件的会话")).toBeInTheDocument();
 
@@ -408,10 +414,15 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "claude-sonnet-4" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "gpt-5.4-codex" })).toBeInTheDocument();
     expect(screen.getByLabelText("按小时 token 消耗折线图")).toBeInTheDocument();
+    expect(container.querySelectorAll(".token-line-hitbox")).toHaveLength(24);
+    expect(container.querySelector(".token-line-path-input")).toBeInTheDocument();
+    expect(container.querySelector(".token-line-path-output")).toBeInTheDocument();
+    expect(container.querySelector(".token-line-path-cache")).toBeInTheDocument();
+    expect(container.querySelector(".token-line-path-reasoning")).toBeInTheDocument();
     expect(screen.getAllByText("00:00").length).toBeGreaterThan(0);
     expect(screen.getAllByText("05:00").length).toBeGreaterThan(0);
-    expect(screen.getAllByTitle(/2026-04-20 00:00[\s\S]*总量: 0 tokens/).length).toBeGreaterThan(0);
-    expect(screen.getAllByTitle(/2026-04-20 05:00[\s\S]*总量: 1\.5k tokens/).length).toBeGreaterThan(0);
+    expect(screen.getAllByLabelText(/2026-04-20 00:00[\s\S]*总量: 0 tokens/).length).toBeGreaterThan(0);
+    expect(screen.getAllByLabelText(/2026-04-20 05:00[\s\S]*总量: 1\.5k tokens/).length).toBeGreaterThan(0);
     expect(screen.getByText("2k")).toBeInTheDocument();
     expect(screen.getByText("输入")).toBeInTheDocument();
     expect(screen.getByText("1.1k tokens")).toBeInTheDocument();
@@ -676,6 +687,44 @@ describe("App", () => {
 
     expect(hourlySeries.map((bucket) => bucket.date)).toContain("2026-04-28 07:00");
     expect(hourlySeries.map((bucket) => bucket.date)).not.toContain("2026-04-28 08:00");
+  });
+
+  it("maps token line hover positions to the matching hour column", () => {
+    expect(getTokenLineHoverIndex(0, 0, 240, 24)).toBe(0);
+    expect(getTokenLineHoverIndex(9, 0, 240, 24)).toBe(0);
+    expect(getTokenLineHoverIndex(10, 0, 240, 24)).toBe(1);
+    expect(getTokenLineHoverIndex(119, 0, 240, 24)).toBe(11);
+    expect(getTokenLineHoverIndex(120, 0, 240, 24)).toBe(12);
+    expect(getTokenLineHoverIndex(239, 0, 240, 24)).toBe(23);
+    expect(getTokenLineHoverIndex(280, 40, 240, 24)).toBe(23);
+    expect(getTokenLineHoverIndex(100, 0, 0, 24)).toBeNull();
+  });
+
+  it("positions token line points at the center of each hour column", () => {
+    expect(getTokenLinePointX(0, 11)).toBeCloseTo(100 / 22);
+    expect(getTokenLinePointX(10, 11)).toBeCloseTo((10.5 / 11) * 100);
+    expect(getTokenLinePointX(0, 1)).toBe(50);
+    expect(getTokenLinePointX(0, 0)).toBe(50);
+  });
+
+  it("creates smooth token line paths while preserving single-point charts", () => {
+    expect(getSmoothTokenLinePath([
+      { x: 5, y: 90 },
+      { x: 50, y: 60 },
+      { x: 95, y: 20 },
+    ])).toContain(" C ");
+    expect(getSmoothTokenLinePath([{ x: 50, y: 20 }])).toBe("M 50 20");
+  });
+
+  it("keeps smooth token line controls within each segment y range", () => {
+    const path = getSmoothTokenLinePath([
+      { x: 5, y: 92 },
+      { x: 50, y: 92 },
+      { x: 95, y: 20 },
+    ]);
+
+    expect(path).not.toContain("104");
+    expect(path).toContain("C");
   });
 
   it("loads session detail on demand after scan selects a session", async () => {
