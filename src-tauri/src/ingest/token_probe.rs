@@ -45,6 +45,17 @@ pub struct TokenUsageSample {
     pub raw_usage_json: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TokenProbeProgress {
+    pub source_id: String,
+    pub phase: String,
+    pub path: String,
+    pub files_scanned: usize,
+    pub records_scanned: usize,
+    pub records_with_usage: usize,
+}
+
 #[derive(Debug, Clone)]
 struct UsageRecord {
     source_id: String,
@@ -68,6 +79,16 @@ struct TokenUsage {
 }
 
 pub fn probe_token_usage(home: &Path) -> Result<TokenUsageProbeReport> {
+    probe_token_usage_with_progress(home, |_event| {})
+}
+
+pub fn probe_token_usage_with_progress<F>(
+    home: &Path,
+    mut on_progress: F,
+) -> Result<TokenUsageProbeReport>
+where
+    F: FnMut(TokenProbeProgress),
+{
     let mut report = TokenUsageProbeReport::default();
     let mut records = Vec::new();
 
@@ -75,9 +96,33 @@ pub fn probe_token_usage(home: &Path) -> Result<TokenUsageProbeReport> {
         ("claude_code", home.join(".claude")),
         ("codex", home.join(".codex")),
     ] {
+        on_progress(TokenProbeProgress {
+            source_id: source_id.to_string(),
+            phase: "扫描目录".to_string(),
+            path: root.display().to_string(),
+            files_scanned: report.files_scanned,
+            records_scanned: report.records_scanned,
+            records_with_usage: records.len(),
+        });
         for path in discover_jsonl_files(&root)? {
+            on_progress(TokenProbeProgress {
+                source_id: source_id.to_string(),
+                phase: "读取 usage".to_string(),
+                path: path.display().to_string(),
+                files_scanned: report.files_scanned + 1,
+                records_scanned: report.records_scanned,
+                records_with_usage: records.len(),
+            });
             report.files_scanned += 1;
             inspect_jsonl_file(source_id, &path, &mut report, &mut records)?;
+            on_progress(TokenProbeProgress {
+                source_id: source_id.to_string(),
+                phase: "读取 usage".to_string(),
+                path: path.display().to_string(),
+                files_scanned: report.files_scanned,
+                records_scanned: report.records_scanned,
+                records_with_usage: records.len(),
+            });
         }
     }
 

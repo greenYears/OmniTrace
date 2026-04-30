@@ -1,12 +1,21 @@
 import { StrictMode } from "react";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const eventMock = vi.hoisted(() => ({
+  listeners: new Map<string, (event: { payload: unknown }) => void>(),
+  listen: vi.fn(),
+}));
 
 vi.mock("./lib/tauri", () => ({
   scanSources: vi.fn(),
   getSessionDetail: vi.fn(),
   probeTokenUsageSources: vi.fn(),
+}));
+
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: eventMock.listen,
 }));
 
 import App, { buildHourlySeries, filterVisibleTokenDetailBuckets } from "./App";
@@ -22,6 +31,14 @@ describe("App", () => {
     scanSourcesMock.mockReset();
     getSessionDetailMock.mockReset();
     probeTokenUsageSourcesMock.mockReset();
+    eventMock.listeners.clear();
+    eventMock.listen.mockReset();
+    eventMock.listen.mockImplementation((eventName, handler) => {
+      eventMock.listeners.set(eventName, handler);
+      return Promise.resolve(() => {
+        eventMock.listeners.delete(eventName);
+      });
+    });
     useSessionStore.setState({
       sessions: [],
       selectedId: null,
@@ -62,6 +79,97 @@ describe("App", () => {
 
     return { promise, resolve, reject };
   }
+
+  it("renders live session scan progress from backend events", async () => {
+    const scan = createDeferred<Awaited<ReturnType<typeof scanSources>>>();
+    scanSourcesMock.mockReturnValue(scan.promise);
+
+    const { container } = render(<App />);
+
+    await waitFor(() => {
+      expect(eventMock.listeners.has("session-scan-progress")).toBe(true);
+    });
+
+    act(() => {
+      eventMock.listeners.get("session-scan-progress")?.({
+        payload: {
+          sourceId: "codex",
+          phase: "解析会话",
+          path: "/Users/test/.codex/sessions/2026/04/29",
+          filesScanned: 4,
+          sessionsFound: 2,
+        },
+      });
+    });
+
+    const status = await screen.findByRole("status", { name: "扫描进度" });
+    expect(status).toHaveTextContent("Codex");
+    expect(status).toHaveTextContent("解析会话");
+    expect(status).toHaveTextContent("~/.codex/sessions/2026/04/29");
+
+    await act(async () => {
+      scan.resolve([]);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("status", { name: "扫描进度" })).toHaveTextContent("完成");
+    });
+    expect(container.querySelector(".scan-progress-dots")).not.toBeInTheDocument();
+    expect(container.querySelector(".scan-progress-complete")).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "关闭扫描进度" }));
+
+    expect(screen.queryByRole("status", { name: "扫描进度" })).not.toBeInTheDocument();
+  });
+
+  it("renders live token probe progress from backend events", async () => {
+    const probe = createDeferred<Awaited<ReturnType<typeof probeTokenUsageSources>>>();
+    probeTokenUsageSourcesMock.mockReturnValue(probe.promise);
+
+    const { container } = render(<App />);
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "◷ Token 探测" }));
+
+    await waitFor(() => {
+      expect(eventMock.listeners.has("token-probe-progress")).toBe(true);
+    });
+
+    act(() => {
+      eventMock.listeners.get("token-probe-progress")?.({
+        payload: {
+          sourceId: "claude_code",
+          phase: "读取 usage",
+          path: "/Users/test/.claude/projects/project-a/session.jsonl",
+          filesScanned: 3,
+          recordsScanned: 20,
+          recordsWithUsage: 5,
+        },
+      });
+    });
+
+    const status = await screen.findByRole("status", { name: "Token 探测进度" });
+    expect(status).toHaveTextContent("Claude Code");
+    expect(status).toHaveTextContent("读取 usage");
+    expect(status).toHaveTextContent("~/.claude/projects/project-a/session.jsonl");
+
+    await act(async () => {
+      probe.resolve({
+        filesScanned: 0,
+        recordsScanned: 0,
+        recordsWithUsage: 0,
+        days: [],
+        hours: [],
+        byModel: [],
+        byModelByDay: [],
+        byModelByHour: [],
+        samples: [],
+      });
+    });
+
+    expect(container.querySelector(".scan-progress-dots")).not.toBeInTheDocument();
+  });
 
   it("renders the OmniTrace shell header with the scanned empty state", async () => {
     render(

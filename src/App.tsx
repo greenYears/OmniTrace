@@ -1,10 +1,17 @@
 import "./styles.css";
 import { startTransition, useEffect, useRef, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 
 import { ThreePaneShell } from "./features/layout/ThreePaneShell";
 import { deleteSession, getSessionDetail, probeTokenUsageSources, scanSources } from "./lib/tauri";
 import { useSessionStore } from "./stores/useSessionStore";
-import type { TimeRange, TokenUsageBucket, TokenUsageProbeReport } from "./types/session";
+import type {
+  SessionScanProgress,
+  TimeRange,
+  TokenProbeProgress,
+  TokenUsageBucket,
+  TokenUsageProbeReport,
+} from "./types/session";
 
 type AppView = "sessions" | "tokenUsage";
 type TokenUsageRange = "today" | "7d" | "30d" | "90d" | "all";
@@ -18,6 +25,12 @@ const tokenUsageRanges: Array<{ value: TokenUsageRange; label: string }> = [
   { value: "all", label: "全部" },
 ];
 const tokenUsageTimeZone = "Asia/Shanghai";
+const sessionScanTimeRanges: Array<{ value: TimeRange; label: string }> = [
+  { value: "today", label: "当日" },
+  { value: "7d", label: "最近 7 天" },
+  { value: "30d", label: "最近 30 天" },
+  { value: "all", label: "全部" },
+];
 
 function formatTokenCount(value: number) {
   return `${formatCompactTokenNumber(value)} tokens`;
@@ -266,11 +279,9 @@ function formatTokenTooltip(bucket: TokenUsageBucket) {
 function TokenUsageSummary({
   report,
   range,
-  onRangeChange,
 }: {
   report: TokenUsageProbeReport;
   range: TokenUsageRange;
-  onRangeChange: (range: TokenUsageRange) => void;
 }) {
   const [sourceFilter, setSourceFilter] = useState<TokenUsageSourceFilter>("all");
   const [modelFilter, setModelFilter] = useState("all");
@@ -326,19 +337,6 @@ function TokenUsageSummary({
 
   return (
     <>
-      <div className="token-range-row" aria-label="Token usage time range">
-        {tokenUsageRanges.map((option) => (
-          <button
-            key={option.value}
-            className={`token-range-button${range === option.value ? " is-selected" : ""}`}
-            type="button"
-            onClick={() => onRangeChange(option.value)}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
-
       <div className="token-dimension-panel">
         <div className="token-filter-group" aria-label="Token usage source filter">
           <span>来源</span>
@@ -528,19 +526,98 @@ function TokenUsageSummary({
   );
 }
 
+function progressSourceLabel(sourceId: string) {
+  return sourceId === "claude_code" ? "Claude Code" : sourceLabel(sourceId);
+}
+
+function compactProgressPath(path: string) {
+  return path
+    .replace(/^\/Users\/[^/]+/, "~")
+    .replace(/^\/home\/[^/]+/, "~");
+}
+
+function ActivityDots() {
+  return (
+    <span className="scan-progress-dots" aria-hidden="true">
+      <span />
+      <span />
+      <span />
+    </span>
+  );
+}
+
+function ToolbarRangeSelector<T extends string>({
+  ariaLabel,
+  options,
+  value,
+  onChange,
+}: {
+  ariaLabel: string;
+  options: Array<{ value: T; label: string }>;
+  value: T;
+  onChange: (value: T) => void;
+}) {
+  return (
+    <div className="app-time-range" aria-label={ariaLabel}>
+      <div className="app-time-range-buttons">
+        {options.map((option) => (
+          <button
+            key={option.value}
+            className={`app-time-range-button${value === option.value ? " is-selected" : ""}`}
+            type="button"
+            onClick={() => onChange(option.value)}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function isProgressDone(phase: string) {
+  return phase.startsWith("完成");
+}
+
+function ProgressIndicator({ phase }: { phase: string }) {
+  return isProgressDone(phase)
+    ? <span className="scan-progress-complete" aria-hidden="true">✓</span>
+    : <ActivityDots />;
+}
+
+function TokenProbeProgressPanel({ progress }: { progress: TokenProbeProgress }) {
+  return (
+    <div
+      className={`token-progress-panel${isProgressDone(progress.phase) ? " is-complete" : ""}`}
+      role="status"
+      aria-label="Token 探测进度"
+    >
+      <div className="scan-progress-main">
+        <ProgressIndicator phase={progress.phase} />
+        <strong>{progressSourceLabel(progress.sourceId)}</strong>
+        <span>{progress.phase}</span>
+      </div>
+      <div className="scan-progress-path">{compactProgressPath(progress.path)}</div>
+      <div className="scan-progress-meta">
+        {progress.filesScanned} 个文件 · {progress.recordsScanned} 条记录 · {progress.recordsWithUsage} 条 usage
+      </div>
+    </div>
+  );
+}
+
 function TokenUsageView({
   report,
   loading,
+  progress,
   range,
   onBack,
-  onRangeChange,
   onRefresh,
 }: {
   report: TokenUsageProbeReport | null;
   loading: boolean;
+  progress: TokenProbeProgress | null;
   range: TokenUsageRange;
   onBack: () => void;
-  onRangeChange: (range: TokenUsageRange) => void;
   onRefresh: () => void;
 }) {
   return (
@@ -566,11 +643,13 @@ function TokenUsageView({
         </div>
 
         {loading && !report ? (
-          <div className="token-probe-loading" role="status">
-            正在扫描本地历史 usage 字段...
-          </div>
+          progress ? <TokenProbeProgressPanel progress={progress} /> : (
+            <div className="token-probe-loading" role="status">
+              正在扫描本地历史 usage 字段...
+            </div>
+          )
         ) : report ? (
-          <TokenUsageSummary report={report} range={range} onRangeChange={onRangeChange} />
+          <TokenUsageSummary report={report} range={range} />
         ) : (
           <div className="token-probe-loading" role="status">
             暂无探测结果，请点击重新探测。
@@ -601,15 +680,23 @@ function App() {
   const [tokenProbeReport, setTokenProbeReport] = useState<TokenUsageProbeReport | null>(null);
   const [tokenProbeLoading, setTokenProbeLoading] = useState(false);
   const [tokenUsageRange, setTokenUsageRange] = useState<TokenUsageRange>("today");
+  const [sessionScanLoading, setSessionScanLoading] = useState(false);
+  const [sessionScanProgress, setSessionScanProgress] = useState<SessionScanProgress | null>(null);
+  const [tokenProbeProgress, setTokenProbeProgress] = useState<TokenProbeProgress | null>(null);
 
   async function handleRefresh() {
+    setSessionScanLoading(true);
+    setSessionScanProgress(null);
     try {
       const nextSessions = await scanSources(timeRange);
       setSessions(nextSessions);
       markScannedNow();
+      setSessionScanProgress((current) => current ? { ...current, phase: "完成" } : null);
     } catch (error) {
       console.error(error);
       setSessions([]);
+    } finally {
+      setSessionScanLoading(false);
     }
   }
 
@@ -624,9 +711,11 @@ function App() {
 
   async function handleTokenProbe() {
     setTokenProbeLoading(true);
+    setTokenProbeProgress(null);
     try {
       const report = await probeTokenUsageSources();
       setTokenProbeReport(report);
+      setTokenProbeProgress((current) => current ? { ...current, phase: "完成" } : null);
     } catch (error) {
       console.error(error);
       setTokenProbeReport({
@@ -663,6 +752,38 @@ function App() {
       setDetailLoading(false);
     }
   }
+
+  useEffect(() => {
+    let cancelled = false;
+    let cleanupSession: (() => void) | null = null;
+    let cleanupToken: (() => void) | null = null;
+
+    void listen<SessionScanProgress>("session-scan-progress", (event) => {
+      setSessionScanProgress(event.payload);
+    }).then((unlisten) => {
+      if (cancelled) {
+        unlisten();
+        return;
+      }
+      cleanupSession = unlisten;
+    });
+
+    void listen<TokenProbeProgress>("token-probe-progress", (event) => {
+      setTokenProbeProgress(event.payload);
+    }).then((unlisten) => {
+      if (cancelled) {
+        unlisten();
+        return;
+      }
+      cleanupToken = unlisten;
+    });
+
+    return () => {
+      cancelled = true;
+      cleanupSession?.();
+      cleanupToken?.();
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -717,18 +838,41 @@ function App() {
           <div className="app-logo" aria-hidden="true">O</div>
           <div>
             <h1>OmniTrace</h1>
-            <span className="app-status">
-              {sessions.length} 个会话
-              {lastScannedAt ? ` · 上次扫描 ${lastScannedAt}` : ""}
-            </span>
+            <div className="app-status-stack">
+              <span>{sessions.length} 个会话</span>
+              {lastScannedAt ? <span>上次扫描 {lastScannedAt}</span> : null}
+            </div>
           </div>
         </div>
         <div className="app-toolbar-actions">
+          {activeView === "sessions" ? (
+            <ToolbarRangeSelector
+              ariaLabel="会话扫描时间范围"
+              options={sessionScanTimeRanges}
+              value={timeRange}
+              onChange={(value) => handleSessionFilterChange({ timeRange: value })}
+            />
+          ) : (
+            <ToolbarRangeSelector
+              ariaLabel="Token usage time range"
+              options={tokenUsageRanges}
+              value={tokenUsageRange}
+              onChange={setTokenUsageRange}
+            />
+          )}
+        </div>
+        <div className="app-toolbar-actions app-toolbar-primary-actions">
           <button className="scan-button" type="button" onClick={() => void handleOpenTokenUsage()}>
             {tokenProbeLoading ? "◷ 探测中" : "◷ Token 探测"}
           </button>
-          <button className="scan-button" type="button" onClick={() => void handleRefresh()}>
-            ↻ 扫描
+          <button
+            aria-label="↻ 扫描"
+            className="scan-button"
+            type="button"
+            onClick={() => void handleRefresh()}
+            disabled={sessionScanLoading}
+          >
+            {sessionScanLoading ? "◷ 扫描中" : "↻ 扫描"}
           </button>
         </div>
       </header>
@@ -738,9 +882,9 @@ function App() {
           <TokenUsageView
             report={tokenProbeReport}
             loading={tokenProbeLoading}
+            progress={tokenProbeProgress}
             range={tokenUsageRange}
             onBack={() => setActiveView("sessions")}
-            onRangeChange={setTokenUsageRange}
             onRefresh={() => void handleTokenProbe()}
           />
         ) : (
@@ -751,7 +895,8 @@ function App() {
             detailLoading={detailLoading}
             sourceFilter={sourceFilter}
             projectFilter={projectFilter}
-            timeRange={timeRange}
+            scanProgress={sessionScanProgress}
+            onDismissScanProgress={() => setSessionScanProgress(null)}
             onFilterChange={handleSessionFilterChange}
             onSelect={selectSession}
             onDelete={handleDelete}

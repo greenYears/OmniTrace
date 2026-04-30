@@ -5,12 +5,13 @@ use chrono::{DateTime, Duration, FixedOffset, Utc};
 use rusqlite::{Connection, OptionalExtension};
 use serde::Deserialize;
 use serde::Serialize;
+use tauri::Emitter;
 
 use crate::db;
 use crate::domain::detail::{parse_detail_messages, DetailMessageRecord};
-use crate::ingest::scanner::scan_home_sources;
 use crate::ingest::scanner::ScanResult;
-use crate::ingest::token_probe::{probe_token_usage, TokenUsageProbeReport};
+use crate::ingest::scanner::{scan_home_sources_with_progress, SessionScanProgress};
+use crate::ingest::token_probe::{probe_token_usage_with_progress, TokenUsageProbeReport};
 use crate::ingest::upsert::{initialize_database, upsert_sessions};
 
 static SCAN_CACHE: LazyLock<Mutex<Option<ScanResult>>> = LazyLock::new(|| Mutex::new(None));
@@ -70,11 +71,22 @@ fn resolve_home_root() -> Result<std::path::PathBuf, String> {
 }
 
 fn load_scan_result(force_refresh: bool) -> Result<ScanResult, String> {
+    load_scan_result_with_progress(force_refresh, |_event| {})
+}
+
+fn load_scan_result_with_progress<F>(
+    force_refresh: bool,
+    mut on_progress: F,
+) -> Result<ScanResult, String>
+where
+    F: FnMut(SessionScanProgress),
+{
     let mut cache = SCAN_CACHE
         .lock()
         .map_err(|_| "scan cache poisoned".to_string())?;
     if force_refresh || cache.is_none() {
-        let result = scan_home_sources(resolve_home_root()?).map_err(|e| e.to_string())?;
+        let result = scan_home_sources_with_progress(resolve_home_root()?, &mut on_progress)
+            .map_err(|e| e.to_string())?;
         *cache = Some(result.clone());
         return Ok(result);
     }
@@ -343,14 +355,27 @@ fn map_detail_record(session_id: &str, record: DetailMessageRecord) -> SessionMe
 }
 
 #[tauri::command]
-pub fn scan_sources(time_range: Option<String>) -> Result<Vec<SessionListItem>, String> {
-    let conn = open_history_database(true)?;
-    let sessions = list_session_items(&conn)?;
-    Ok(filter_session_items_by_time_range(
-        sessions,
-        time_range.as_deref(),
-        Utc::now().with_timezone(&beijing_offset()),
-    ))
+pub async fn scan_sources(
+    window: tauri::Window,
+    time_range: Option<String>,
+) -> Result<Vec<SessionListItem>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let result = load_scan_result_with_progress(true, |progress| {
+            let _ = window.emit("session-scan-progress", progress);
+        })?;
+        let conn = Connection::open_in_memory().map_err(|e| e.to_string())?;
+        db::configure_connection(&conn).map_err(|e| e.to_string())?;
+        initialize_database(&conn).map_err(|e| e.to_string())?;
+        upsert_sessions(&conn, &result.sessions).map_err(|e| e.to_string())?;
+        let sessions = list_session_items(&conn)?;
+        Ok(filter_session_items_by_time_range(
+            sessions,
+            time_range.as_deref(),
+            Utc::now().with_timezone(&beijing_offset()),
+        ))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -360,8 +385,17 @@ pub fn get_session_detail(id: String) -> Result<Option<SessionDetailDto>, String
 }
 
 #[tauri::command]
-pub fn probe_token_usage_sources() -> Result<TokenUsageProbeReport, String> {
-    probe_token_usage(&resolve_home_root()?).map_err(|e| e.to_string())
+pub async fn probe_token_usage_sources(
+    window: tauri::Window,
+) -> Result<TokenUsageProbeReport, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        probe_token_usage_with_progress(&resolve_home_root()?, |progress| {
+            let _ = window.emit("token-probe-progress", progress);
+        })
+        .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

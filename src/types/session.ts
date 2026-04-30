@@ -73,3 +73,20 @@ export type TokenUsageProbeReport = {
   byModelByHour: TokenUsageBucket[];
   samples: TokenUsageSample[];
 };
+
+export type SessionScanProgress = {
+  sourceId: string;
+  phase: string;
+  path: string;
+  filesScanned: number;
+  sessionsFound: number;
+};
+
+export type TokenProbeProgress = {
+  sourceId: string;
+  phase: string;
+  path: string;
+  filesScanned: number;
+  recordsScanned: number;
+  recordsWithUsage: number;
+};

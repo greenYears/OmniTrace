@@ -6,7 +6,7 @@ import "../../styles.css";
 import { SidebarFilters } from "./SidebarFilters";
 
 describe("SidebarFilters", () => {
-  it("changes source, project, and time filters", async () => {
+  it("changes source and project filters", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
 
@@ -14,19 +14,18 @@ describe("SidebarFilters", () => {
       <SidebarFilters
         sources={["all", "claude_code", "codex"]}
         projects={[{ name: "all" }, { name: "project-a" }, { name: "project-b" }]}
-        timeRanges={["all", "7d", "30d"]}
         source="all"
         project="all"
-        timeRange="all"
         onChange={onChange}
       />,
     );
 
+    await user.click(screen.getByRole("button", { name: "Codex" }));
     await user.click(screen.getByRole("button", { name: "project-b" }));
-    await user.click(screen.getByRole("button", { name: "最近 30 天" }));
 
+    expect(onChange).toHaveBeenCalledWith({ sourceFilter: "codex" });
     expect(onChange).toHaveBeenCalledWith({ projectFilter: "project-b" });
-    expect(onChange).toHaveBeenCalledWith({ timeRange: "30d" });
+    expect(screen.queryByText("时间范围")).not.toBeInTheDocument();
   });
 
   it("shows project paths in the project filter and copies the full path", async () => {
@@ -40,10 +39,8 @@ describe("SidebarFilters", () => {
           { name: "all" },
           { name: "OmniTrace", path: "/Users/test/workspace/OmniTrace" },
         ]}
-        timeRanges={["all", "7d", "30d"]}
         source="all"
         project="all"
-        timeRange="all"
         onChange={onChange}
       />,
     );
@@ -61,10 +58,8 @@ describe("SidebarFilters", () => {
       <SidebarFilters
         sources={["all", "claude_code", "codex"]}
         projects={[{ name: "all" }, { name: "OmniTrace", path: "/Users/test/workspace/OmniTrace" }]}
-        timeRanges={["all", "7d", "30d"]}
         source="all"
         project="all"
-        timeRange="all"
         onChange={vi.fn()}
       />,
     );

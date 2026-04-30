@@ -2,7 +2,9 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use tmpomnitrace_bootstrapmpul84appomnitrace_lib::ingest::token_probe::probe_token_usage;
+use tmpomnitrace_bootstrapmpul84appomnitrace_lib::ingest::token_probe::{
+    probe_token_usage, probe_token_usage_with_progress,
+};
 
 fn temp_path(name: &str) -> PathBuf {
     let stamp = SystemTime::now()
@@ -132,6 +134,37 @@ fn probe_token_usage_reads_codex_token_count_events() {
     assert_eq!(hour.cache_read_tokens, 20);
     assert_eq!(hour.reasoning_tokens, 5);
     assert_eq!(hour.total_tokens, 135);
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[test]
+fn probe_token_usage_reports_progress_paths() {
+    let home = temp_path("token-probe-progress");
+    let claude_project = home.join(".claude/projects/-Users-test-workspace-alpha");
+    fs::create_dir_all(&claude_project).expect("claude project dir should be created");
+    let session_path = claude_project.join("claude-1.jsonl");
+
+    fs::write(
+        &session_path,
+        "{\"type\":\"assistant\",\"timestamp\":\"2026-04-28T01:00:00Z\",\"message\":{\"model\":\"claude-sonnet-4\",\"usage\":{\"input_tokens\":10,\"output_tokens\":20}}}\n",
+    )
+    .expect("claude usage fixture should be written");
+
+    let mut progress = Vec::new();
+    let report = probe_token_usage_with_progress(&home, |event| {
+        progress.push(event);
+    })
+    .expect("probe should succeed");
+
+    assert_eq!(report.records_with_usage, 1);
+    assert!(progress.iter().any(|event| {
+        event.source_id == "claude_code"
+            && event.phase == "读取 usage"
+            && event.path == session_path.display().to_string()
+            && event.files_scanned >= 1
+            && event.records_with_usage >= 1
+    }));
 
     let _ = fs::remove_dir_all(home);
 }

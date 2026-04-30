@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, SecondsFormat, Utc};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::adapters::claude_code::ClaudeCodeAdapter;
@@ -19,6 +19,16 @@ use crate::domain::models::{MessageRecord, NormalizedSession, ProjectRecord};
 #[derive(Debug, Clone)]
 pub struct ScanResult {
     pub sessions: Vec<NormalizedSession>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionScanProgress {
+    pub source_id: String,
+    pub phase: String,
+    pub path: String,
+    pub files_scanned: usize,
+    pub sessions_found: usize,
 }
 
 #[derive(Debug, Deserialize)]
@@ -109,12 +119,31 @@ fn sort_sessions(mut sessions: Vec<NormalizedSession>) -> Vec<NormalizedSession>
 }
 
 fn scan_adapter_sessions<A: SessionAdapter>(adapter: &A) -> Result<Vec<NormalizedSession>> {
+    let mut noop = |_event| {};
+    scan_adapter_sessions_with_progress(adapter, &mut noop)
+}
+
+fn scan_adapter_sessions_with_progress<A, F>(
+    adapter: &A,
+    on_progress: &mut F,
+) -> Result<Vec<NormalizedSession>>
+where
+    A: SessionAdapter,
+    F: FnMut(SessionScanProgress),
+{
     let mut sessions = Vec::new();
 
     let paths = adapter
         .discover_sessions()
         .with_context(|| format!("discover {} sessions", adapter.source_id()))?;
     for path in paths {
+        on_progress(SessionScanProgress {
+            source_id: adapter.source_id().to_string(),
+            phase: "解析会话".to_string(),
+            path: path.display().to_string(),
+            files_scanned: sessions.len() + 1,
+            sessions_found: sessions.len(),
+        });
         let mut session = adapter.parse_session(&path).with_context(|| {
             format!("parse {} session: {}", adapter.source_id(), path.display())
         })?;
@@ -122,6 +151,13 @@ fn scan_adapter_sessions<A: SessionAdapter>(adapter: &A) -> Result<Vec<Normalize
             session.model_id = extract_model_id(adapter.source_id(), Path::new(&session.raw_ref));
         }
         sessions.push(session);
+        on_progress(SessionScanProgress {
+            source_id: adapter.source_id().to_string(),
+            phase: "解析会话".to_string(),
+            path: path.display().to_string(),
+            files_scanned: sessions.len(),
+            sessions_found: sessions.len(),
+        });
     }
 
     Ok(sessions)
@@ -320,7 +356,13 @@ fn claude_message_text(entry: &ClaudeHistoryEntry) -> String {
     }
 }
 
-fn scan_real_claude_sources(root: &Path) -> Result<Vec<NormalizedSession>> {
+fn scan_real_claude_sources_with_progress<F>(
+    root: &Path,
+    on_progress: &mut F,
+) -> Result<Vec<NormalizedSession>>
+where
+    F: FnMut(SessionScanProgress),
+{
     let meta_by_session = read_claude_session_meta(root).unwrap_or_default();
     let raw_by_session = read_claude_project_sessions(root).unwrap_or_default();
 
@@ -329,6 +371,13 @@ fn scan_real_claude_sources(root: &Path) -> Result<Vec<NormalizedSession>> {
     // Collect entries from history.jsonl (may be empty or only current session)
     let history = root.join("history.jsonl");
     if history.exists() {
+        on_progress(SessionScanProgress {
+            source_id: "claude_code".to_string(),
+            phase: "解析历史".to_string(),
+            path: history.display().to_string(),
+            files_scanned: 1,
+            sessions_found: grouped.len(),
+        });
         let entries: Vec<ClaudeHistoryEntry> = read_jsonl(&history)?;
         for entry in entries {
             let acc = grouped.entry(entry.session_id.clone()).or_default();
@@ -356,6 +405,13 @@ fn scan_real_claude_sources(root: &Path) -> Result<Vec<NormalizedSession>> {
         let Some(raw_path) = &path_meta.path else {
             continue;
         };
+        on_progress(SessionScanProgress {
+            source_id: "claude_code".to_string(),
+            phase: "解析会话".to_string(),
+            path: raw_path.clone(),
+            files_scanned: grouped.len() + 1,
+            sessions_found: grouped.len(),
+        });
         let file = match File::open(raw_path) {
             Ok(f) => f,
             Err(_) => continue,
@@ -407,6 +463,13 @@ fn scan_real_claude_sources(root: &Path) -> Result<Vec<NormalizedSession>> {
         if let Some(text) = first_user_text {
             acc.messages.push((started_ms, text));
         }
+        on_progress(SessionScanProgress {
+            source_id: "claude_code".to_string(),
+            phase: "解析会话".to_string(),
+            path: raw_path.clone(),
+            files_scanned: grouped.len(),
+            sessions_found: grouped.len(),
+        });
     }
 
     let mut sessions = Vec::new();
@@ -601,14 +664,65 @@ pub fn scan_fixture_sources(claude_root: PathBuf, codex_root: PathBuf) -> Result
 }
 
 pub fn scan_home_sources(home_root: PathBuf) -> Result<ScanResult> {
-    let mut sessions = scan_real_claude_sources(&home_root.join(".claude"))?;
+    scan_home_sources_with_progress(home_root, |_event| {})
+}
+
+pub fn scan_home_sources_with_progress<F>(
+    home_root: PathBuf,
+    mut on_progress: F,
+) -> Result<ScanResult>
+where
+    F: FnMut(SessionScanProgress),
+{
+    let claude_root = home_root.join(".claude");
+    on_progress(SessionScanProgress {
+        source_id: "claude_code".to_string(),
+        phase: "扫描目录".to_string(),
+        path: claude_root.display().to_string(),
+        files_scanned: 0,
+        sessions_found: 0,
+    });
+    let mut sessions = scan_real_claude_sources_with_progress(&claude_root, &mut on_progress)?;
+    on_progress(SessionScanProgress {
+        source_id: "claude_code".to_string(),
+        phase: "完成来源".to_string(),
+        path: claude_root.display().to_string(),
+        files_scanned: 0,
+        sessions_found: sessions.len(),
+    });
 
     let codex_sessions_dir = home_root.join(".codex/sessions");
     if codex_sessions_dir.exists() {
+        let before = sessions.len();
         let codex = CodexAdapter::new(codex_sessions_dir);
-        sessions.extend(scan_adapter_sessions(&codex)?);
+        let codex_sessions = scan_adapter_sessions_with_progress(&codex, &mut on_progress)?;
+        sessions.extend(codex_sessions);
+        on_progress(SessionScanProgress {
+            source_id: "codex".to_string(),
+            phase: "完成来源".to_string(),
+            path: home_root.join(".codex").display().to_string(),
+            files_scanned: sessions.len() - before,
+            sessions_found: sessions.len() - before,
+        });
     } else {
+        on_progress(SessionScanProgress {
+            source_id: "codex".to_string(),
+            phase: "扫描目录".to_string(),
+            path: home_root.join(".codex").display().to_string(),
+            files_scanned: 0,
+            sessions_found: 0,
+        });
         sessions.extend(scan_real_codex_sources(&home_root.join(".codex"))?);
+        on_progress(SessionScanProgress {
+            source_id: "codex".to_string(),
+            phase: "完成来源".to_string(),
+            path: home_root.join(".codex").display().to_string(),
+            files_scanned: 0,
+            sessions_found: sessions
+                .iter()
+                .filter(|session| session.source_id == "codex")
+                .count(),
+        });
     }
 
     Ok(ScanResult {

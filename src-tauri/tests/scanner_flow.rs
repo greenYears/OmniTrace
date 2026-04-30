@@ -6,7 +6,7 @@ use rusqlite::{Connection, OptionalExtension};
 
 use tmpomnitrace_bootstrapmpul84appomnitrace_lib::db;
 use tmpomnitrace_bootstrapmpul84appomnitrace_lib::ingest::scanner::{
-    scan_fixture_sources, scan_home_sources,
+    scan_fixture_sources, scan_home_sources, scan_home_sources_with_progress,
 };
 use tmpomnitrace_bootstrapmpul84appomnitrace_lib::ingest::upsert::{
     initialize_database, upsert_sessions,
@@ -165,6 +165,40 @@ fn scan_and_upsert_real_history_layout_end_to_end() {
         .query_row("SELECT COUNT(*) FROM sessions;", [], |row| row.get(0))
         .expect("count query should succeed");
     assert_eq!(count, 2);
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[test]
+fn scan_home_sources_reports_progress_paths() {
+    let home = temp_path("real-history-progress");
+    let codex_sessions = home.join(".codex/sessions/2026/04/20");
+    fs::create_dir_all(&codex_sessions).expect("codex nested sessions dir should be created");
+
+    let codex_session_path = codex_sessions.join("rollout-2026-04-20T05-13-20-codex-1.jsonl");
+    fs::write(
+        &codex_session_path,
+        concat!(
+            "{\"timestamp\":\"2026-04-20T05:13:20Z\",\"type\":\"session_meta\",\"payload\":{\"id\":\"codex-1\",\"cwd\":\"/Users/test/workspace/bravo\"}}\n",
+            "{\"timestamp\":\"2026-04-20T05:13:21Z\",\"type\":\"response_item\",\"payload\":{\"role\":\"user\",\"text\":\"one\"}}\n"
+        ),
+    )
+    .expect("codex session should be written");
+
+    let mut progress = Vec::new();
+    let result = scan_home_sources_with_progress(home.clone(), |event| {
+        progress.push(event);
+    })
+    .expect("scan should succeed");
+
+    assert_eq!(result.sessions.len(), 1);
+    assert!(progress.iter().any(|event| {
+        event.source_id == "codex"
+            && event.phase == "解析会话"
+            && event.path == codex_session_path.display().to_string()
+            && event.files_scanned >= 1
+            && event.sessions_found >= 1
+    }));
 
     let _ = fs::remove_dir_all(home);
 }

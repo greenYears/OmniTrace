@@ -1,19 +1,16 @@
 import clsx from "clsx";
 import { useEffect, useRef, useState } from "react";
 
-import type { SourceFilter, TimeRange } from "../../types/session";
+import type { SourceFilter } from "../../types/session";
 
 type SidebarFiltersProps = {
   sources: SourceFilter[];
   projects: ProjectFilterOption[];
-  timeRanges: TimeRange[];
   source: SourceFilter;
   project: string;
-  timeRange: TimeRange;
   onChange: (next: {
     sourceFilter?: SourceFilter;
     projectFilter?: string;
-    timeRange?: TimeRange;
   }) => void;
 };
 
@@ -175,21 +172,12 @@ function ProjectFilterGroup({
 export function SidebarFilters({
   sources,
   projects,
-  timeRanges,
   source,
   project,
-  timeRange,
   onChange,
 }: SidebarFiltersProps) {
   return (
     <aside className="three-pane three-pane-left sidebar-filters" aria-label="筛选">
-      <FilterGroup
-        title="时间范围"
-        options={timeRanges}
-        labels={{ today: "当日", all: "全部", "7d": "最近 7 天", "30d": "最近 30 天" }}
-        value={timeRange}
-        onSelect={(value) => onChange({ timeRange: value })}
-      />
       <FilterGroup
         title="来源"
         options={sources}

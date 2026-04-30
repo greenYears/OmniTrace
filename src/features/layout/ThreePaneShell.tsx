@@ -2,8 +2,8 @@ import { SidebarFilters, type ProjectFilterOption } from "../sidebar/SidebarFilt
 import type {
   SessionDetail,
   SessionListItem,
+  SessionScanProgress,
   SourceFilter,
-  TimeRange,
 } from "../../types/session";
 import { SessionDetail as SessionDetailPane } from "../sessions/SessionDetail";
 import { SessionList } from "../sessions/SessionList";
@@ -15,11 +15,11 @@ type ThreePaneShellProps = {
   detailLoading: boolean;
   sourceFilter: SourceFilter;
   projectFilter: string;
-  timeRange: TimeRange;
+  scanProgress: SessionScanProgress | null;
+  onDismissScanProgress: () => void;
   onFilterChange: (next: {
     sourceFilter?: SourceFilter;
     projectFilter?: string;
-    timeRange?: TimeRange;
   }) => void;
   onSelect: (id: string) => void;
   onDelete: (id: string) => void;
@@ -31,6 +31,10 @@ type PendingSessionMeta = {
   sourceId: string;
 };
 
+function isProgressDone(phase: string) {
+  return phase.startsWith("完成");
+}
+
 export function ThreePaneShell({
   sessions,
   selectedId,
@@ -38,7 +42,8 @@ export function ThreePaneShell({
   detailLoading,
   sourceFilter,
   projectFilter,
-  timeRange,
+  scanProgress,
+  onDismissScanProgress,
   onFilterChange,
   onSelect,
   onDelete,
@@ -78,14 +83,49 @@ export function ThreePaneShell({
     : null;
 
   return (
-    <div className="three-pane-shell" aria-label="Session viewer">
+    <div className={`three-pane-shell${scanProgress ? " has-progress" : ""}`} aria-label="Session viewer">
+      {scanProgress ? (
+        <div
+          className={`scan-progress-strip${isProgressDone(scanProgress.phase) ? " is-complete" : ""}`}
+          role="status"
+          aria-label="扫描进度"
+        >
+          <div className="scan-progress-main">
+            {isProgressDone(scanProgress.phase) ? (
+              <span className="scan-progress-complete" aria-hidden="true">✓</span>
+            ) : (
+              <span className="scan-progress-dots" aria-hidden="true">
+                <span />
+                <span />
+                <span />
+              </span>
+            )}
+            <strong>{scanProgress.sourceId === "claude_code" ? "Claude Code" : "Codex"}</strong>
+            <span>{scanProgress.phase}</span>
+          </div>
+          <div className="scan-progress-path">
+            {scanProgress.path.replace(/^\/Users\/[^/]+/, "~").replace(/^\/home\/[^/]+/, "~")}
+          </div>
+          <div className="scan-progress-meta">
+            {scanProgress.filesScanned} 个文件 · {scanProgress.sessionsFound} 个会话
+          </div>
+          {isProgressDone(scanProgress.phase) ? (
+            <button
+              className="scan-progress-close"
+              type="button"
+              aria-label="关闭扫描进度"
+              onClick={onDismissScanProgress}
+            >
+              ×
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       <SidebarFilters
         sources={["all", "claude_code", "codex"]}
         projects={projects}
-        timeRanges={["today", "7d", "30d", "all"]}
         source={sourceFilter}
         project={projectFilter}
-        timeRange={timeRange}
         onChange={onFilterChange}
       />
 
