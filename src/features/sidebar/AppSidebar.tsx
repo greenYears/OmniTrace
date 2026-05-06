@@ -1,3 +1,5 @@
+import { handleWindowDragPointerDown } from "../../lib/windowDrag";
+
 type AppView = "sessions" | "tokenUsage";
 
 type AppSidebarProps = {
@@ -35,8 +37,8 @@ function GearIcon() {
 export function AppSidebar({ activeView, onViewChange }: AppSidebarProps) {
   return (
     <nav className="app-sidebar" aria-label="主导航">
-      <div className="app-sidebar-top">
-        <div className="app-sidebar-logo" aria-label="OmniTrace">O</div>
+      <div className="app-sidebar-top" data-tauri-drag-region onPointerDown={handleWindowDragPointerDown}>
+        <div className="app-sidebar-logo" aria-label="OmniTrace" data-tauri-drag-region>O</div>
       </div>
       <div className="app-sidebar-nav">
         <button

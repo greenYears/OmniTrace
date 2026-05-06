@@ -1,4 +1,5 @@
 import { ToolbarRangeSelector } from "../../components/TimeRangeSelector";
+import { handleWindowDragPointerDown } from "../../lib/windowDrag";
 import { SidebarFilters, type ProjectFilterOption } from "../sidebar/SidebarFilters";
 import type {
   CustomDateRange,
@@ -103,8 +104,8 @@ export function ThreePaneShell({
 
   return (
     <div className={`three-pane-shell${scanProgress ? " has-progress" : ""}`} aria-label="Session viewer">
-      <header className="view-toolbar" data-tauri-drag-region>
-        <div className="view-toolbar-left">
+      <header className="view-toolbar" data-tauri-drag-region onPointerDown={handleWindowDragPointerDown}>
+        <div className="view-toolbar-left" data-tauri-drag-region>
           <ToolbarRangeSelector
             ariaLabel="会话扫描时间范围"
             options={rangeOptions}
@@ -114,7 +115,7 @@ export function ThreePaneShell({
             onCustomRangeChange={onCustomRangeChange}
           />
         </div>
-        <div className="view-toolbar-right">
+        <div className="view-toolbar-right" data-tauri-drag-region>
           <button
             className="scan-button"
             type="button"

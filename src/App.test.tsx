@@ -1,11 +1,15 @@
 import { StrictMode } from "react";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const eventMock = vi.hoisted(() => ({
   listeners: new Map<string, (event: { payload: unknown }) => void>(),
   listen: vi.fn(),
+}));
+const windowMock = vi.hoisted(() => ({
+  startDragging: vi.fn(),
+  getCurrentWindow: vi.fn(),
 }));
 
 vi.mock("./lib/tauri", () => ({
@@ -16,6 +20,10 @@ vi.mock("./lib/tauri", () => ({
 
 vi.mock("@tauri-apps/api/event", () => ({
   listen: eventMock.listen,
+}));
+
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: windowMock.getCurrentWindow,
 }));
 
 import App, {
@@ -45,6 +53,12 @@ describe("App", () => {
       return Promise.resolve(() => {
         eventMock.listeners.delete(eventName);
       });
+    });
+    windowMock.startDragging.mockReset();
+    windowMock.startDragging.mockResolvedValue(undefined);
+    windowMock.getCurrentWindow.mockReset();
+    windowMock.getCurrentWindow.mockReturnValue({
+      startDragging: windowMock.startDragging,
     });
     useSessionStore.setState({
       sessions: [],
@@ -217,6 +231,27 @@ describe("App", () => {
     expect(
       screen.queryByRole("button", { name: "Codex: project-a" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("marks non-interactive titlebar areas as Tauri drag regions", async () => {
+    const { container } = render(<App />);
+
+    expect(container.querySelector(".app-sidebar-top")).toHaveAttribute("data-tauri-drag-region");
+    expect(container.querySelector(".app-sidebar-logo")).toHaveAttribute("data-tauri-drag-region");
+    expect(container.querySelector(".view-toolbar-left")).toHaveAttribute("data-tauri-drag-region");
+    expect(container.querySelector(".view-toolbar-right")).toHaveAttribute("data-tauri-drag-region");
+  });
+
+  it("starts window dragging from toolbar blank space but not from scan controls", () => {
+    const { container } = render(<App />);
+
+    fireEvent.pointerDown(container.querySelector(".view-toolbar-right")!, { button: 0 });
+
+    expect(windowMock.startDragging).toHaveBeenCalledTimes(1);
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: /扫描/ }), { button: 0 });
+
+    expect(windowMock.startDragging).toHaveBeenCalledTimes(1);
   });
 
   it("clears stale sessions when the session scan time range changes and scans with the selected range", async () => {

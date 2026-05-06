@@ -6,6 +6,7 @@ import { ToolbarRangeSelector, isValidCustomDateRange } from "./components/TimeR
 import { ThreePaneShell } from "./features/layout/ThreePaneShell";
 import { AppSidebar } from "./features/sidebar/AppSidebar";
 import { deleteSession, getSessionDetail, probeTokenUsageSources, scanSources } from "./lib/tauri";
+import { handleWindowDragPointerDown } from "./lib/windowDrag";
 import { useSessionStore } from "./stores/useSessionStore";
 import type {
   CustomDateRange,
@@ -774,9 +775,9 @@ function TokenUsageView({
 }) {
   return (
     <section className="token-usage-view" aria-label="Token usage view">
-      <header className="view-toolbar" data-tauri-drag-region>
-        <div className="view-toolbar-left">
-          <h2 className="view-toolbar-title">Token Usage</h2>
+      <header className="view-toolbar" data-tauri-drag-region onPointerDown={handleWindowDragPointerDown}>
+        <div className="view-toolbar-left" data-tauri-drag-region>
+          <h2 className="view-toolbar-title" data-tauri-drag-region>Token Usage</h2>
           <ToolbarRangeSelector
             ariaLabel="Token usage time range"
             options={rangeOptions}
@@ -786,8 +787,8 @@ function TokenUsageView({
             onCustomRangeChange={onCustomRangeChange}
           />
         </div>
-        <div className="view-toolbar-right">
-          <span className="token-probe-badge">只读探测</span>
+        <div className="view-toolbar-right" data-tauri-drag-region>
+          <span className="token-probe-badge" data-tauri-drag-region>只读探测</span>
           <button className="scan-button" type="button" onClick={onRefresh} disabled={loading}>
             {loading ? "◷ 探测中" : "↻ 重新探测"}
           </button>

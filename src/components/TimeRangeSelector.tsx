@@ -206,8 +206,8 @@ export function ToolbarRangeSelector<T extends string>({
   }, [open]);
 
   return (
-    <div ref={containerRef} className="app-time-range" aria-label={ariaLabel}>
-      <div className="app-time-range-buttons">
+    <div ref={containerRef} className="app-time-range" aria-label={ariaLabel} data-tauri-drag-region>
+      <div className="app-time-range-buttons" data-tauri-drag-region>
         {options.map((option) => (
           <button
             key={option.value}
