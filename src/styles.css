@@ -2029,6 +2029,16 @@ body {
   padding: 5px 0;
 }
 
+.msg-time {
+  margin-left: auto;
+  color: var(--terminal-dim);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 /* --- User message --- */
 .msg-user-card {
   display: flex;
@@ -2190,7 +2200,7 @@ body {
 }
 
 .msg-latest-badge {
-  margin-left: auto;
+  margin-left: 6px;
   padding: 2px 7px;
   border-radius: 999px;
   background: rgba(145, 214, 183, 0.13);
@@ -2329,6 +2339,11 @@ body {
   white-space: nowrap;
   min-width: 0;
   flex: 1;
+}
+
+.msg-tool-summary .msg-time {
+  flex-shrink: 0;
+  margin-left: 4px;
 }
 
 .msg-chevron {

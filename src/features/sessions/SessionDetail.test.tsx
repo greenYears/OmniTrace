@@ -202,6 +202,57 @@ describe("SessionDetail", () => {
     expect(screen.queryByText("Edit")).not.toBeInTheDocument();
   });
 
+  it("shows Beijing timestamps on visible transcript records", () => {
+    render(
+      <SessionDetail
+        detail={{
+          id: "session:codex:time",
+          sourceId: "codex",
+          title: "Codex: OmniTrace",
+          updatedAt: "2026-04-21T10:00:00Z",
+          startedAt: "2026-04-21T09:58:00Z",
+          endedAt: "2026-04-21T10:00:00Z",
+          projectName: "OmniTrace",
+          projectPath: "/Users/test/workspace/OmniTrace",
+          messageCount: 3,
+          preview: "什么时候发生的",
+          fileSize: 0,
+          modelId: "",
+          messages: [
+            {
+              id: "message:1",
+              role: "user",
+              kind: "message",
+              contentText: "什么时候发生的",
+              createdAt: "2026-04-21T09:58:30Z",
+              filePaths: [],
+            },
+            {
+              id: "message:2",
+              role: "assistant",
+              kind: "message",
+              contentText: "我会显示时间。",
+              createdAt: "2026-04-21T09:59:20Z",
+              filePaths: [],
+            },
+            {
+              id: "message:3",
+              role: "tool",
+              kind: "tool_call",
+              toolName: "Read",
+              contentText: "读取文件",
+              createdAt: "2026-04-21T10:00:00Z",
+              filePaths: [],
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("2026-04-21 17:58")).toBeInTheDocument();
+    expect(screen.getByText("2026-04-21 17:59")).toBeInTheDocument();
+  });
+
   it("renders Claude selected IDE lines as compact context under the related user message", async () => {
     render(
       <SessionDetail

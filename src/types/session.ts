@@ -1,4 +1,4 @@
-export type TimeRange = "today" | "all" | "7d" | "30d" | "custom";
+export type TimeRange = "today" | "yesterday" | "all" | "7d" | "30d" | "custom";
 
 export type CustomDateRange = {
   startDate: string;

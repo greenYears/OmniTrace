@@ -13,6 +13,7 @@ const LOAD_MORE_COUNT = 80;
 const LOAD_MORE_SCROLL_TOP = 120;
 const CONTENT_REVEAL_DURATION = 360;
 const STAGGER_REVEAL_COUNT = 8;
+const detailTimeZone = "Asia/Shanghai";
 
 type SourceMeta = {
   label: string;
@@ -25,6 +26,39 @@ function getSourceMeta(sourceId: string): SourceMeta {
     return { label: "Codex", iconSrc: codexIcon, iconClass: "is-codex" };
   }
   return { label: "Claude", iconSrc: claudeCodeIcon, iconClass: "is-claude-code" };
+}
+
+function formatMessageTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: detailTimeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? "";
+
+  return `${part("year")}-${part("month")}-${part("day")} ${part("hour")}:${part("minute")}`;
+}
+
+function MessageTime({ value }: { value: string }) {
+  const formatted = formatMessageTime(value);
+  if (!formatted) {
+    return null;
+  }
+
+  return (
+    <time className="msg-time" dateTime={value} title={value}>
+      {formatted}
+    </time>
+  );
 }
 
 function Chevron({ open }: { open: boolean }) {
@@ -186,6 +220,7 @@ function ToolActionBlock({
             <img src={sourceMeta.iconSrc} alt="" width="10" height="10" />
           </div>
           <span className="msg-source-label">{sourceMeta.label} 执行动作</span>
+          <MessageTime value={tools[0].createdAt} />
         </div>
         <MessageToolAttachment tools={tools} />
       </div>
@@ -214,6 +249,7 @@ function UserMessage({
         <div className="msg-user-header">
           <div className="msg-user-icon" aria-hidden="true">⟩</div>
           <span className="msg-user-label">用户</span>
+          <MessageTime value={msg.createdAt} />
           {isLatest && <span className="msg-latest-badge">最新</span>}
         </div>
         <CollapsibleContent text={text} markdown />
@@ -247,6 +283,7 @@ function AssistantMessage({
             <img src={sourceMeta.iconSrc} alt="" width="10" height="10" />
           </div>
           <span className="msg-source-label">{sourceMeta.label}</span>
+          <MessageTime value={msg.createdAt} />
           {isLatest && <span className="msg-latest-badge">最新</span>}
         </div>
         <CollapsibleContent text={text} markdown />
@@ -290,6 +327,7 @@ function ToolMessage({
           {hasContent && <Chevron open={open} />}
           <span className="msg-tool-name">{label}</span>
           <span className="msg-tool-summary-path">{summary}</span>
+          <MessageTime value={msg.createdAt} />
           {isLatest && <span className="msg-latest-dot" aria-hidden="true" />}
         </button>
         {open && hasContent && (

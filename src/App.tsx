@@ -31,6 +31,7 @@ type TokenLinePoint = {
 
 const tokenUsageRanges: Array<{ value: TokenUsageRange; label: string }> = [
   { value: "today", label: "当日" },
+  { value: "yesterday", label: "昨天" },
   { value: "7d", label: "最近 7 天" },
   { value: "30d", label: "最近 30 天" },
   { value: "custom", label: "自定义" },
@@ -39,6 +40,7 @@ const tokenUsageRanges: Array<{ value: TokenUsageRange; label: string }> = [
 const tokenUsageTimeZone = "Asia/Shanghai";
 const sessionScanTimeRanges: Array<{ value: TimeRange; label: string }> = [
   { value: "today", label: "当日" },
+  { value: "yesterday", label: "昨天" },
   { value: "7d", label: "最近 7 天" },
   { value: "30d", label: "最近 30 天" },
   { value: "custom", label: "自定义" },
@@ -98,6 +100,18 @@ export function filterBucketsByRange(
   if (range === "today") {
     const latestDay = sortedDays[sortedDays.length - 1]?.date;
     return latestDay ? sortedDays.filter((day) => day.date === latestDay) : [];
+  }
+
+  if (range === "yesterday") {
+    const latestDay = sortedDays[sortedDays.length - 1]?.date;
+    if (!latestDay) {
+      return [];
+    }
+
+    const yesterday = new Date(`${latestDay}T00:00:00Z`);
+    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+    const yesterdayDate = yesterday.toISOString().slice(0, 10);
+    return sortedDays.filter((day) => day.date === yesterdayDate);
   }
 
   if (range === "custom") {

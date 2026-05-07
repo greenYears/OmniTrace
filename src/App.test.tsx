@@ -254,6 +254,49 @@ describe("App", () => {
     expect(windowMock.startDragging).toHaveBeenCalledTimes(1);
   });
 
+  it("offers yesterday in session and token time range selectors", async () => {
+    render(<App />);
+
+    expect(screen.getByRole("button", { name: "昨天" })).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Token 探测" }));
+
+    expect(await screen.findByRole("button", { name: "昨天" })).toBeInTheDocument();
+  });
+
+  it("scans sessions with the yesterday time range", async () => {
+    scanSourcesMock
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: "session:codex:yesterday",
+          sourceId: "codex",
+          title: "Codex: yesterday",
+          updatedAt: "2026-04-27T10:00:00Z",
+          projectName: "yesterday",
+          projectPath: "/tmp/yesterday",
+          messageCount: 1,
+          preview: "yesterday",
+          fileSize: 0,
+          modelId: "",
+        },
+      ]);
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(scanSourcesMock).toHaveBeenCalledWith("today");
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "昨天" }));
+    await user.click(screen.getByRole("button", { name: "↻ 扫描" }));
+
+    expect(await screen.findByRole("button", { name: "Codex: yesterday" })).toBeInTheDocument();
+    expect(scanSourcesMock).toHaveBeenLastCalledWith("yesterday");
+  });
+
   it("clears stale sessions when the session scan time range changes and scans with the selected range", async () => {
     scanSourcesMock
       .mockResolvedValueOnce([
@@ -688,6 +731,16 @@ describe("App", () => {
       startDate: "2026-04-01",
       endDate: "2026-04-30",
     }).map((bucket) => bucket.date)).toEqual(["2026-04-01", "2026-04-15"]);
+  });
+
+  it("filters token buckets to yesterday relative to the latest usage day", () => {
+    const buckets = [
+      { ...createTokenBucket("2026-04-26"), totalTokens: 10 },
+      { ...createTokenBucket("2026-04-27"), totalTokens: 20 },
+      { ...createTokenBucket("2026-04-28"), totalTokens: 30 },
+    ];
+
+    expect(filterBucketsByRange(buckets, "yesterday").map((bucket) => bucket.date)).toEqual(["2026-04-27"]);
   });
 
   it("limits today's hourly series to the current hour and hides zero detail rows", () => {

@@ -173,6 +173,10 @@ fn filter_session_items_by_time_range(
     let today = now.date_naive();
     let (start_date, end_date) = match time_range {
         "today" => (today, today),
+        "yesterday" => {
+            let yesterday = today - Duration::days(1);
+            (yesterday, yesterday)
+        }
         "7d" => (today - Duration::days(6), today),
         "30d" => (today - Duration::days(29), today),
         value if value.starts_with("custom:") => {
@@ -474,6 +478,7 @@ mod tests {
         let sessions = vec![
             item("today", "2026-04-28T02:00:00Z"),
             item("midnight", "2026-04-27T16:00:00Z"),
+            item("yesterday", "2026-04-27T02:00:00Z"),
             item("week", "2026-04-22T00:00:00Z"),
             item("old", "2026-04-01T00:00:00Z"),
         ];
@@ -487,14 +492,23 @@ mod tests {
             vec!["today", "midnight"]
         );
 
+        let yesterday = filter_session_items_by_time_range(sessions.clone(), Some("yesterday"), now);
+        assert_eq!(
+            yesterday
+                .iter()
+                .map(|item| item.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["yesterday"]
+        );
+
         let week = filter_session_items_by_time_range(sessions.clone(), Some("7d"), now);
         assert_eq!(
             week.iter().map(|item| item.id.as_str()).collect::<Vec<_>>(),
-            vec!["today", "midnight", "week"]
+            vec!["today", "midnight", "yesterday", "week"]
         );
 
         let all = filter_session_items_by_time_range(sessions.clone(), Some("all"), now);
-        assert_eq!(all.len(), 4);
+        assert_eq!(all.len(), 5);
 
         let custom = filter_session_items_by_time_range(
             sessions.clone(),
@@ -506,7 +520,7 @@ mod tests {
                 .iter()
                 .map(|item| item.id.as_str())
                 .collect::<Vec<_>>(),
-            vec!["today", "midnight", "week"]
+            vec!["today", "midnight", "yesterday", "week"]
         );
 
         let invalid =
