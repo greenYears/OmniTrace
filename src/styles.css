@@ -2273,6 +2273,37 @@ body {
   letter-spacing: 0.02em;
 }
 
+.msg-tool-count-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+  border: 1px solid rgba(155, 216, 208, 0.18);
+  border-radius: 999px;
+  padding: 1px 7px;
+  background: rgba(155, 216, 208, 0.08);
+  color: var(--terminal-accent);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+
+.msg-tool-count-badge:hover {
+  border-color: rgba(155, 216, 208, 0.34);
+  background: rgba(155, 216, 208, 0.14);
+}
+
+.msg-tool-count-badge .msg-chevron {
+  width: 10px;
+  height: 10px;
+}
+
+.msg-tool-inline-list {
+  margin-top: 6px;
+}
+
 .msg-assistant .msg-content {
   font-size: 13px;
   line-height: 1.55;

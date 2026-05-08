@@ -204,10 +204,12 @@ function MessageSelectionContexts({ contexts }: { contexts: SessionMessage[] }) 
 function ToolActionBlock({
   tools,
   sourceMeta,
+  modelId,
   className,
 }: {
   tools: SessionMessage[];
   sourceMeta: SourceMeta;
+  modelId?: string;
   className?: string;
 }) {
   if (tools.length === 0) return null;
@@ -219,7 +221,7 @@ function ToolActionBlock({
           <div className={clsx("msg-source-icon", sourceMeta.iconClass)} aria-hidden="true">
             <img src={sourceMeta.iconSrc} alt="" width="10" height="10" />
           </div>
-          <span className="msg-source-label">{sourceMeta.label} 执行动作</span>
+          <span className="msg-source-label">{modelId ?? sourceMeta.label} · 执行动作</span>
           <MessageTime value={tools[0].createdAt} />
         </div>
         <MessageToolAttachment tools={tools} />
@@ -264,17 +266,21 @@ function AssistantMessage({
   msg,
   tools,
   sourceMeta,
+  modelId,
   isLatest,
   className,
 }: {
   msg: SessionMessage;
   tools?: SessionMessage[];
   sourceMeta: SourceMeta;
+  modelId?: string;
   isLatest?: boolean;
   className?: string;
 }) {
   const text = msg.contentText.trim();
-  if (!text) return null;
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const toolCount = tools?.length ?? 0;
+  if (!text && toolCount === 0) return null;
   return (
     <div className={clsx("msg-card msg-assistant-card", isLatest && "is-latest", className)}>
       <div className="msg-block msg-assistant">
@@ -282,12 +288,28 @@ function AssistantMessage({
           <div className={clsx("msg-source-icon", sourceMeta.iconClass)} aria-hidden="true">
             <img src={sourceMeta.iconSrc} alt="" width="10" height="10" />
           </div>
-          <span className="msg-source-label">{sourceMeta.label}</span>
+          <span className="msg-source-label">{modelId ?? sourceMeta.label}</span>
+          {toolCount > 0 && (
+            <button
+              type="button"
+              className="msg-tool-count-badge"
+              onClick={() => setToolsOpen((v) => !v)}
+            >
+              <Chevron open={toolsOpen} />
+              {toolCount} 个工具
+            </button>
+          )}
           <MessageTime value={msg.createdAt} />
           {isLatest && <span className="msg-latest-badge">最新</span>}
         </div>
-        <CollapsibleContent text={text} markdown />
-        <MessageToolAttachment tools={tools ?? []} />
+        {text && <CollapsibleContent text={text} markdown />}
+        {toolsOpen && toolCount > 0 && (
+          <div className="msg-tool-inline-list">
+            {tools!.map((tool) => (
+              <ToolMessage key={tool.id} msg={tool} embedded />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -572,6 +594,7 @@ export function SessionDetail({ detail, isLoading = false, pendingSession = null
           key={item.id}
           tools={item.tools}
           sourceMeta={sourceMeta!}
+          modelId={contentDetail?.modelId}
           className={shouldStagger ? "is-stagger-enter" : undefined}
         />
       );
@@ -592,7 +615,7 @@ export function SessionDetail({ detail, isLoading = false, pendingSession = null
       case "user":
         return <UserMessage key={msg.id} {...messageProps} />;
       case "assistant":
-        return <AssistantMessage key={msg.id} {...messageProps} sourceMeta={sourceMeta!} />;
+        return <AssistantMessage key={msg.id} {...messageProps} sourceMeta={sourceMeta!} modelId={contentDetail?.modelId} />;
       default:
         return null;
     }
