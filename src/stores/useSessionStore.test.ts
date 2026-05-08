@@ -11,8 +11,7 @@ describe("useSessionStore", () => {
       detailLoading: false,
       sourceFilter: "all",
       projectFilter: "all",
-      timeRange: "today",
-      lastScannedAt: null,
+      detailRefreshKey: 0,
     });
   });
 
@@ -45,5 +44,16 @@ describe("useSessionStore", () => {
     expect(state.selectedId).toBe("session:codex:new");
     expect(state.detail).toBe(detail);
     expect(state.detailLoading).toBe(false);
+  });
+
+  it("requests a detail refresh when the current session is selected again", () => {
+    useSessionStore.setState({
+      selectedId: "session:codex:old",
+      detailRefreshKey: 0,
+    });
+
+    useSessionStore.getState().selectSession("session:codex:old");
+
+    expect(useSessionStore.getState().detailRefreshKey).toBe(1);
   });
 });

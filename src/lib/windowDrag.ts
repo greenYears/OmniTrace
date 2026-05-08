@@ -22,10 +22,20 @@ export function isWindowDragTarget(target: EventTarget | null, currentTarget: Ev
   return currentTarget.contains(target) && !target.closest(noDragSelector);
 }
 
+let lastDragClickTime = 0;
+
 export function handleWindowDragPointerDown(event: ReactPointerEvent<HTMLElement>) {
   if (event.button !== 0 || event.defaultPrevented || !isWindowDragTarget(event.target, event.currentTarget)) {
     return;
   }
 
+  const now = Date.now();
+  if (now - lastDragClickTime < 500) {
+    lastDragClickTime = 0;
+    void getCurrentWindow().toggleMaximize();
+    return;
+  }
+
+  lastDragClickTime = now;
   void Promise.resolve(getCurrentWindow().startDragging()).catch(() => undefined);
 }

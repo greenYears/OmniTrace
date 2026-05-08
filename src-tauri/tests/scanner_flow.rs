@@ -6,7 +6,7 @@ use rusqlite::{Connection, OptionalExtension};
 
 use tmpomnitrace_bootstrapmpul84appomnitrace_lib::db;
 use tmpomnitrace_bootstrapmpul84appomnitrace_lib::ingest::scanner::{
-    scan_fixture_sources, scan_home_sources, scan_home_sources_with_progress,
+    persist_scan_results, scan_fixture_sources, scan_home_sources, scan_home_sources_with_progress,
 };
 use tmpomnitrace_bootstrapmpul84appomnitrace_lib::ingest::upsert::{
     initialize_database, upsert_sessions,
@@ -199,6 +199,73 @@ fn scan_home_sources_reports_progress_paths() {
             && event.files_scanned >= 1
             && event.sessions_found >= 1
     }));
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[test]
+fn persist_scan_results_upgrades_legacy_ingest_records_before_writing() {
+    let home = temp_path("legacy-ingest-persist");
+    let codex_root = home.join(".codex");
+    fs::create_dir_all(&codex_root).expect("codex dir should be created");
+    fs::write(
+        codex_root.join("history.jsonl"),
+        "{\"session_id\":\"codex-1\",\"ts\":1776662000,\"text\":\"one\"}\n",
+    )
+    .expect("codex history should be written");
+
+    let conn = Connection::open_in_memory().expect("in-memory sqlite connection");
+    db::configure_connection(&conn).expect("configure connection should succeed");
+    conn.execute_batch(
+        r#"
+        CREATE TABLE _meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+        CREATE TABLE projects (
+          id TEXT PRIMARY KEY,
+          path TEXT NOT NULL UNIQUE,
+          display_name TEXT
+        );
+        CREATE TABLE sessions (
+          id TEXT PRIMARY KEY,
+          source_id TEXT NOT NULL,
+          project_id TEXT,
+          external_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          started_at TEXT NOT NULL,
+          ended_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          message_count INTEGER NOT NULL DEFAULT 0,
+          summary_hint TEXT,
+          raw_ref TEXT,
+          file_size INTEGER NOT NULL DEFAULT 0,
+          model_id TEXT NOT NULL DEFAULT '',
+          UNIQUE(source_id, external_id)
+        );
+        CREATE TABLE messages (
+          id TEXT PRIMARY KEY,
+          session_id TEXT NOT NULL,
+          role TEXT NOT NULL,
+          content_text TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          seq_no INTEGER NOT NULL,
+          metadata_json TEXT,
+          UNIQUE(session_id, seq_no)
+        );
+        CREATE TABLE ingest_records (
+          id TEXT PRIMARY KEY,
+          source_id TEXT NOT NULL,
+          scan_path TEXT NOT NULL
+        );
+        "#,
+    )
+    .expect("legacy schema should be created");
+
+    persist_scan_results(&conn, &[], &home, false, true)
+        .expect("persist should upgrade legacy ingest_records and record files");
+
+    let count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM ingest_records", [], |row| row.get(0))
+        .expect("ingest count query should succeed");
+    assert_eq!(count, 1);
 
     let _ = fs::remove_dir_all(home);
 }

@@ -4,7 +4,6 @@ import type {
   SessionDetail,
   SessionListItem,
   SourceFilter,
-  TimeRange,
 } from "../types/session";
 
 type SessionStore = {
@@ -12,18 +11,16 @@ type SessionStore = {
   selectedId: string | null;
   detail: SessionDetail | null;
   detailLoading: boolean;
+  detailRefreshKey: number;
   sourceFilter: SourceFilter;
   projectFilter: string;
-  timeRange: TimeRange;
-  lastScannedAt: string | null;
   setSessions: (sessions: SessionListItem[]) => void;
   selectSession: (id: string) => void;
   setDetail: (detail: SessionDetail | null) => void;
   setDetailLoading: (loading: boolean) => void;
   updateFilters: (
-    next: Partial<Pick<SessionStore, "sourceFilter" | "projectFilter" | "timeRange">>,
+    next: Partial<Pick<SessionStore, "sourceFilter" | "projectFilter">>,
   ) => void;
-  markScannedNow: () => void;
 };
 
 export const useSessionStore = create<SessionStore>((set) => ({
@@ -31,31 +28,26 @@ export const useSessionStore = create<SessionStore>((set) => ({
   selectedId: null,
   detail: null,
   detailLoading: false,
+  detailRefreshKey: 0,
   sourceFilter: "all",
   projectFilter: "all",
-  timeRange: "today",
-  lastScannedAt: null,
   setSessions: (sessions) =>
-    set(() => ({
+    set((state) => ({
       sessions,
-      selectedId: sessions.length > 0 ? sessions[0]?.id ?? null : null,
-      detailLoading: sessions.length > 0,
+      selectedId: sessions.some((session) => session.id === state.selectedId)
+        ? state.selectedId
+        : sessions[0]?.id ?? null,
+      detailRefreshKey: state.detailRefreshKey + 1,
     })),
   selectSession: (id) =>
-    set((state) => {
-      if (state.selectedId === id) {
-        return state;
-      }
-
-      return {
-        selectedId: id,
-      };
-    }),
+    set((state) => ({
+      selectedId: id,
+      detailRefreshKey: state.detailRefreshKey + 1,
+    })),
   setDetail: (detail) => set(() => ({ detail })),
   setDetailLoading: (detailLoading) => set(() => ({ detailLoading })),
   updateFilters: (next) =>
     set(() => ({
       ...next,
     })),
-  markScannedNow: () => set(() => ({ lastScannedAt: new Date().toISOString() })),
 }));

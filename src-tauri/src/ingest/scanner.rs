@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, SecondsFormat, Utc};
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -15,6 +16,8 @@ use crate::adapters::{
 };
 use crate::domain::detail::extract_model_id;
 use crate::domain::models::{MessageRecord, NormalizedSession, ProjectRecord};
+use crate::ingest::fingerprint::file_fingerprint;
+use crate::ingest::upsert::{cleanup_stale_records, find_ingest_record, upsert_ingest_record};
 
 #[derive(Debug, Clone)]
 pub struct ScanResult {
@@ -728,4 +731,209 @@ where
     Ok(ScanResult {
         sessions: sort_sessions(sessions),
     })
+}
+
+/// Check which sources need re-scanning based on file fingerprints.
+/// Returns (claude_needs_scan, codex_needs_scan).
+pub fn check_sources_needing_scan(conn: &Connection, home_root: &Path) -> (bool, bool) {
+    let claude_root = home_root.join(".claude");
+    let claude_files = discover_claude_source_files(&claude_root);
+    let claude_needs_scan = claude_files.iter().any(|p| {
+        let Ok(fp) = file_fingerprint(p) else {
+            return true;
+        };
+        find_ingest_record(conn, "claude_code", &fp)
+            .ok()
+            .flatten()
+            .map(|r| r.parse_status != "success")
+            .unwrap_or(true)
+    });
+
+    let codex_sessions_dir = home_root.join(".codex/sessions");
+    let codex_root = home_root.join(".codex");
+    let codex_needs_scan = if codex_sessions_dir.exists() {
+        let codex = CodexAdapter::new(codex_sessions_dir);
+        let paths = codex.discover_sessions().unwrap_or_default();
+        paths.iter().any(|p| {
+            let Ok(fp) = file_fingerprint(p) else {
+                return true;
+            };
+            find_ingest_record(conn, "codex", &fp)
+                .ok()
+                .flatten()
+                .map(|r| r.parse_status != "success")
+                .unwrap_or(true)
+        })
+    } else {
+        let codex_files = discover_codex_source_files(&codex_root);
+        codex_files.iter().any(|p| {
+            let Ok(fp) = file_fingerprint(p) else {
+                return true;
+            };
+            find_ingest_record(conn, "codex", &fp)
+                .ok()
+                .flatten()
+                .map(|r| r.parse_status != "success")
+                .unwrap_or(true)
+        })
+    };
+
+    (claude_needs_scan, codex_needs_scan)
+}
+
+/// Parse session files from disk (no DB access needed).
+pub fn parse_home_sessions<F>(
+    home_root: &Path,
+    scan_claude: bool,
+    scan_codex: bool,
+    mut on_progress: F,
+) -> Result<Vec<NormalizedSession>>
+where
+    F: FnMut(SessionScanProgress),
+{
+    let mut sessions = Vec::new();
+
+    if scan_claude {
+        let claude_root = home_root.join(".claude");
+        on_progress(SessionScanProgress {
+            source_id: "claude_code".to_string(),
+            phase: "解析会话".to_string(),
+            path: claude_root.display().to_string(),
+            files_scanned: 0,
+            sessions_found: 0,
+        });
+        let claude_sessions =
+            scan_real_claude_sources_with_progress(&claude_root, &mut on_progress)?;
+        sessions.extend(claude_sessions);
+        on_progress(SessionScanProgress {
+            source_id: "claude_code".to_string(),
+            phase: "完成来源".to_string(),
+            path: claude_root.display().to_string(),
+            files_scanned: sessions.len(),
+            sessions_found: sessions.len(),
+        });
+    }
+
+    if scan_codex {
+        let codex_sessions_dir = home_root.join(".codex/sessions");
+        let codex_root = home_root.join(".codex");
+        on_progress(SessionScanProgress {
+            source_id: "codex".to_string(),
+            phase: "解析会话".to_string(),
+            path: codex_root.display().to_string(),
+            files_scanned: 0,
+            sessions_found: sessions.len(),
+        });
+        if codex_sessions_dir.exists() {
+            let codex = CodexAdapter::new(codex_sessions_dir);
+            let codex_sessions = scan_adapter_sessions_with_progress(&codex, &mut on_progress)?;
+            sessions.extend(codex_sessions);
+        } else {
+            let codex_sessions = scan_real_codex_sources(&codex_root)?;
+            sessions.extend(codex_sessions);
+        }
+        on_progress(SessionScanProgress {
+            source_id: "codex".to_string(),
+            phase: "完成来源".to_string(),
+            path: codex_root.display().to_string(),
+            files_scanned: sessions.iter().filter(|s| s.source_id == "codex").count(),
+            sessions_found: sessions.len(),
+        });
+    }
+
+    Ok(sessions)
+}
+
+/// Persist parsed sessions and update ingest records.
+pub fn persist_scan_results(
+    conn: &Connection,
+    sessions: &[NormalizedSession],
+    home_root: &Path,
+    claude_scanned: bool,
+    codex_scanned: bool,
+) -> Result<()> {
+    crate::db::schema::run_migrations(conn)?;
+
+    if !sessions.is_empty() {
+        crate::ingest::upsert::upsert_sessions(conn, sessions)?;
+    }
+
+    if claude_scanned {
+        let claude_root = home_root.join(".claude");
+        let claude_files = discover_claude_source_files(&claude_root);
+        record_ingest_for_files(conn, "claude_code", &claude_files)?;
+    }
+    if codex_scanned {
+        let codex_root = home_root.join(".codex");
+        let codex_sessions_dir = codex_root.join("sessions");
+        let codex_files = if codex_sessions_dir.exists() {
+            let codex = CodexAdapter::new(codex_sessions_dir);
+            codex.discover_sessions().unwrap_or_default()
+        } else {
+            discover_codex_source_files(&codex_root)
+        };
+        record_ingest_for_files(conn, "codex", &codex_files)?;
+    }
+
+    cleanup_stale_records(conn)?;
+    Ok(())
+}
+
+fn discover_claude_source_files(root: &Path) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+
+    let history = root.join("history.jsonl");
+    if history.exists() {
+        files.push(history);
+    }
+
+    let projects_dir = root.join("projects");
+    if projects_dir.exists() {
+        if let Ok(entries) = std::fs::read_dir(&projects_dir) {
+            for entry in entries.flatten() {
+                let project_dir = entry.path();
+                if !project_dir.is_dir() {
+                    continue;
+                }
+                if let Ok(jsonl_files) = discover_jsonl_sessions(&project_dir) {
+                    files.extend(jsonl_files);
+                }
+            }
+        }
+    }
+
+    files
+}
+
+fn discover_codex_source_files(root: &Path) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+
+    let history = root.join("history.jsonl");
+    if history.exists() {
+        files.push(history);
+    }
+
+    let sessions_dir = root.join("sessions");
+    if sessions_dir.exists() {
+        if let Ok(jsonl_files) = discover_jsonl_sessions(&sessions_dir) {
+            files.extend(jsonl_files);
+        }
+    }
+
+    files
+}
+
+fn record_ingest_for_files(conn: &Connection, source_id: &str, files: &[PathBuf]) -> Result<()> {
+    for file_path in files {
+        let fp = file_fingerprint(file_path)?;
+        upsert_ingest_record(
+            conn,
+            source_id,
+            &file_path.display().to_string(),
+            &fp,
+            "success",
+            None,
+        )?;
+    }
+    Ok(())
 }

@@ -1,7 +1,6 @@
 use std::path::Path;
-use std::sync::{LazyLock, Mutex};
 
-use chrono::{DateTime, Duration, FixedOffset, NaiveDate, Utc};
+use chrono::Utc;
 use rusqlite::{Connection, OptionalExtension};
 use serde::Deserialize;
 use serde::Serialize;
@@ -9,12 +8,10 @@ use tauri::Emitter;
 
 use crate::db;
 use crate::domain::detail::{parse_detail_messages, DetailMessageRecord};
-use crate::ingest::scanner::ScanResult;
-use crate::ingest::scanner::{scan_home_sources_with_progress, SessionScanProgress};
+use crate::ingest::scanner::{
+    check_sources_needing_scan, parse_home_sessions, persist_scan_results,
+};
 use crate::ingest::token_probe::{probe_token_usage_with_progress, TokenUsageProbeReport};
-use crate::ingest::upsert::{initialize_database, upsert_sessions};
-
-static SCAN_CACHE: LazyLock<Mutex<Option<ScanResult>>> = LazyLock::new(|| Mutex::new(None));
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SessionListItem {
@@ -70,41 +67,8 @@ fn resolve_home_root() -> Result<std::path::PathBuf, String> {
         .ok_or_else(|| "HOME is not set".to_string())
 }
 
-fn load_scan_result(force_refresh: bool) -> Result<ScanResult, String> {
-    load_scan_result_with_progress(force_refresh, |_event| {})
-}
-
-fn load_scan_result_with_progress<F>(
-    force_refresh: bool,
-    mut on_progress: F,
-) -> Result<ScanResult, String>
-where
-    F: FnMut(SessionScanProgress),
-{
-    let mut cache = SCAN_CACHE
-        .lock()
-        .map_err(|_| "scan cache poisoned".to_string())?;
-    if force_refresh || cache.is_none() {
-        let result = scan_home_sources_with_progress(resolve_home_root()?, &mut on_progress)
-            .map_err(|e| e.to_string())?;
-        *cache = Some(result.clone());
-        return Ok(result);
-    }
-
-    cache
-        .as_ref()
-        .cloned()
-        .ok_or_else(|| "scan cache missing".to_string())
-}
-
-fn open_history_database(force_refresh: bool) -> Result<Connection, String> {
-    let result = load_scan_result(force_refresh)?;
-
-    let conn = Connection::open_in_memory().map_err(|e| e.to_string())?;
-    db::configure_connection(&conn).map_err(|e| e.to_string())?;
-    initialize_database(&conn).map_err(|e| e.to_string())?;
-    upsert_sessions(&conn, &result.sessions).map_err(|e| e.to_string())?;
-    Ok(conn)
+fn format_anyhow_error(error: anyhow::Error) -> String {
+    format!("{error:#}")
 }
 
 fn list_session_items(conn: &Connection) -> Result<Vec<SessionListItem>, String> {
@@ -156,59 +120,6 @@ ORDER BY s.updated_at DESC, s.source_id ASC, s.external_id ASC
 
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())
-}
-
-fn beijing_offset() -> FixedOffset {
-    FixedOffset::east_opt(8 * 3600).expect("Asia/Shanghai offset should be valid")
-}
-
-fn filter_session_items_by_time_range(
-    sessions: Vec<SessionListItem>,
-    time_range: Option<&str>,
-    now: DateTime<FixedOffset>,
-) -> Vec<SessionListItem> {
-    let Some(time_range) = time_range.filter(|value| *value != "all") else {
-        return sessions;
-    };
-    let today = now.date_naive();
-    let (start_date, end_date) = match time_range {
-        "today" => (today, today),
-        "yesterday" => {
-            let yesterday = today - Duration::days(1);
-            (yesterday, yesterday)
-        }
-        "7d" => (today - Duration::days(6), today),
-        "30d" => (today - Duration::days(29), today),
-        value if value.starts_with("custom:") => {
-            let parts = value.split(':').collect::<Vec<_>>();
-            if parts.len() != 3 {
-                return Vec::new();
-            }
-            let Ok(start_date) = NaiveDate::parse_from_str(parts[1], "%Y-%m-%d") else {
-                return Vec::new();
-            };
-            let Ok(end_date) = NaiveDate::parse_from_str(parts[2], "%Y-%m-%d") else {
-                return Vec::new();
-            };
-            if start_date > end_date {
-                return Vec::new();
-            }
-            (start_date, end_date)
-        }
-        _ => return sessions,
-    };
-
-    sessions
-        .into_iter()
-        .filter(|session| {
-            DateTime::parse_from_rfc3339(&session.updated_at)
-                .map(|updated_at| {
-                    let updated_date = updated_at.with_timezone(&beijing_offset()).date_naive();
-                    updated_date >= start_date && updated_date <= end_date
-                })
-                .unwrap_or(false)
-        })
-        .collect()
 }
 
 fn load_session_detail(conn: &Connection, id: &str) -> Result<Option<SessionDetailDto>, String> {
@@ -374,157 +285,219 @@ fn map_detail_record(session_id: &str, record: DetailMessageRecord) -> SessionMe
     }
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct ScanAllResult {
+    pub session_count: i64,
+    pub message_count: i64,
+    pub last_scanned_at: String,
+    pub files_scanned: usize,
+    pub records_scanned: usize,
+    pub records_with_usage: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ScanStats {
+    pub session_count: i64,
+    pub message_count: i64,
+    pub last_scanned_at: Option<String>,
+}
+
 #[tauri::command]
-pub async fn scan_sources(
-    window: tauri::Window,
-    time_range: Option<String>,
+pub async fn list_sessions(
+    state: tauri::State<'_, db::AppState>,
 ) -> Result<Vec<SessionListItem>, String> {
+    let db = state.db.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let result = load_scan_result_with_progress(true, |progress| {
-            let _ = window.emit("session-scan-progress", progress);
-        })?;
-        let conn = Connection::open_in_memory().map_err(|e| e.to_string())?;
-        db::configure_connection(&conn).map_err(|e| e.to_string())?;
-        initialize_database(&conn).map_err(|e| e.to_string())?;
-        upsert_sessions(&conn, &result.sessions).map_err(|e| e.to_string())?;
-        let sessions = list_session_items(&conn)?;
-        Ok(filter_session_items_by_time_range(
-            sessions,
-            time_range.as_deref(),
-            Utc::now().with_timezone(&beijing_offset()),
-        ))
+        let conn = db.lock().map_err(|_| "db lock poisoned".to_string())?;
+        list_session_items(&conn)
     })
     .await
     .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub fn get_session_detail(id: String) -> Result<Option<SessionDetailDto>, String> {
-    let conn = open_history_database(false)?;
-    load_session_detail(&conn, &id)
-}
-
-#[tauri::command]
-pub async fn probe_token_usage_sources(
+pub async fn scan_all_data(
     window: tauri::Window,
-) -> Result<TokenUsageProbeReport, String> {
+    state: tauri::State<'_, db::AppState>,
+) -> Result<ScanAllResult, String> {
+    let home_root = resolve_home_root()?;
+    let db = state.db.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        probe_token_usage_with_progress(&resolve_home_root()?, |progress| {
+        // Phase 1: Brief lock — check which sources need scanning
+        let (scan_claude, scan_codex) = {
+            let conn = db.lock().map_err(|_| "db lock poisoned".to_string())?;
+            check_sources_needing_scan(&conn, &home_root)
+        };
+
+        // Phase 2: No lock — parse files from disk (heavy I/O)
+        if scan_claude || scan_codex {
+            let parsed = parse_home_sessions(
+                &home_root,
+                scan_claude,
+                scan_codex,
+                |progress| {
+                    let _ = window.emit("session-scan-progress", progress);
+                },
+            )
+            .map_err(format_anyhow_error)?;
+
+            // Phase 3: Brief lock — write sessions to DB
+            {
+                let conn = db.lock().map_err(|_| "db lock poisoned".to_string())?;
+                persist_scan_results(&conn, &parsed, &home_root, scan_claude, scan_codex)
+                    .map_err(format_anyhow_error)?;
+            }
+        }
+
+        // Phase 4: No lock — probe token usage
+        let token_report = probe_token_usage_with_progress(&home_root, |progress| {
             let _ = window.emit("token-probe-progress", progress);
         })
-        .map_err(|e| e.to_string())
+        .map_err(format_anyhow_error)?;
+
+        // Phase 5: Brief lock — save token report + update scan timestamp
+        let (session_count, message_count, last_scanned_at) = {
+            let conn = db.lock().map_err(|_| "db lock poisoned".to_string())?;
+            let report_json = serde_json::to_string(&token_report)
+                .map_err(|e| format!("serialize token report: {e}"))?;
+            conn.execute(
+                "INSERT INTO _meta (key, value) VALUES ('token_probe_report', ?1) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                [&report_json],
+            )
+            .map_err(|e| format!("save token report: {e}"))?;
+
+            let now = Utc::now().to_rfc3339();
+            conn.execute(
+                "INSERT INTO _meta (key, value) VALUES ('last_scanned_at', ?1) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                [&now],
+            )
+            .map_err(|e| format!("save scan timestamp: {e}"))?;
+
+            let session_count: i64 = conn
+                .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
+                .unwrap_or(0);
+            let message_count: i64 = conn
+                .query_row("SELECT COUNT(*) FROM messages", [], |row| row.get(0))
+                .unwrap_or(0);
+            (session_count, message_count, now)
+        };
+
+        Ok(ScanAllResult {
+            session_count,
+            message_count,
+            last_scanned_at,
+            files_scanned: token_report.files_scanned,
+            records_scanned: token_report.records_scanned,
+            records_with_usage: token_report.records_with_usage,
+        })
     })
     .await
     .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub fn delete_session(id: String) -> Result<(), String> {
-    let conn = open_history_database(false)?;
-
-    let raw_ref: Option<String> = conn
-        .query_row("SELECT raw_ref FROM sessions WHERE id = ?1", [&id], |row| {
-            row.get(0)
-        })
-        .optional()
-        .map_err(|e| e.to_string())?;
-
-    if let Some(ref path) = raw_ref {
-        if !path.is_empty() && std::path::Path::new(path).exists() {
-            std::fs::remove_file(path).map_err(|e| format!("delete file: {e}"))?;
-        }
-    }
-
-    conn.execute("DELETE FROM messages WHERE session_id = ?1", [&id])
-        .map_err(|e| e.to_string())?;
-    conn.execute("DELETE FROM sessions WHERE id = ?1", [&id])
-        .map_err(|e| e.to_string())?;
-
-    let mut cache = SCAN_CACHE
-        .lock()
-        .map_err(|_| "scan cache poisoned".to_string())?;
-    *cache = None;
-
-    Ok(())
+pub async fn get_session_detail(
+    id: String,
+    state: tauri::State<'_, db::AppState>,
+) -> Result<Option<SessionDetailDto>, String> {
+    let db = state.db.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let conn = db.lock().map_err(|_| "db lock poisoned".to_string())?;
+        load_session_detail(&conn, &id)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use chrono::{FixedOffset, TimeZone};
-
-    fn item(id: &str, updated_at: &str) -> SessionListItem {
-        SessionListItem {
-            id: id.to_string(),
-            resume_id: id.to_string(),
-            source_id: "codex".to_string(),
-            title: id.to_string(),
-            updated_at: updated_at.to_string(),
-            project_name: "project".to_string(),
-            project_path: "/tmp/project".to_string(),
-            message_count: 1,
-            preview: String::new(),
-            file_size: 0,
-            model_id: String::new(),
+#[tauri::command]
+pub async fn get_token_report(
+    state: tauri::State<'_, db::AppState>,
+) -> Result<Option<TokenUsageProbeReport>, String> {
+    let db = state.db.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let conn = db.lock().map_err(|_| "db lock poisoned".to_string())?;
+        let json: Option<String> = conn
+            .query_row(
+                "SELECT value FROM _meta WHERE key = 'token_probe_report'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+        match json {
+            Some(json) => {
+                let report: TokenUsageProbeReport = serde_json::from_str(&json)
+                    .map_err(|e| format!("deserialize token report: {e}"))?;
+                Ok(Some(report))
+            }
+            None => Ok(None),
         }
-    }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
 
-    #[test]
-    fn filters_session_items_by_selected_time_range_in_beijing_time() {
-        let now = FixedOffset::east_opt(8 * 3600)
-            .unwrap()
-            .with_ymd_and_hms(2026, 4, 28, 11, 30, 0)
-            .unwrap();
-        let sessions = vec![
-            item("today", "2026-04-28T02:00:00Z"),
-            item("midnight", "2026-04-27T16:00:00Z"),
-            item("yesterday", "2026-04-27T02:00:00Z"),
-            item("week", "2026-04-22T00:00:00Z"),
-            item("old", "2026-04-01T00:00:00Z"),
-        ];
+#[tauri::command]
+pub fn get_scan_stats(state: tauri::State<'_, db::AppState>) -> Result<ScanStats, String> {
+    let conn = state
+        .db
+        .lock()
+        .map_err(|_| "db lock poisoned".to_string())?;
+    let session_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
+        .unwrap_or(0);
+    let message_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM messages", [], |row| row.get(0))
+        .unwrap_or(0);
+    let last_scanned_at: Option<String> = conn
+        .query_row(
+            "SELECT value FROM _meta WHERE key = 'last_scanned_at'",
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .unwrap_or(None);
+    Ok(ScanStats {
+        session_count,
+        message_count,
+        last_scanned_at,
+    })
+}
 
-        let today = filter_session_items_by_time_range(sessions.clone(), Some("today"), now);
-        assert_eq!(
-            today
-                .iter()
-                .map(|item| item.id.as_str())
-                .collect::<Vec<_>>(),
-            vec!["today", "midnight"]
-        );
+#[tauri::command]
+pub async fn delete_session(
+    id: String,
+    state: tauri::State<'_, db::AppState>,
+) -> Result<(), String> {
+    let db = state.db.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let conn = db.lock().map_err(|_| "db lock poisoned".to_string())?;
 
-        let yesterday = filter_session_items_by_time_range(sessions.clone(), Some("yesterday"), now);
-        assert_eq!(
-            yesterday
-                .iter()
-                .map(|item| item.id.as_str())
-                .collect::<Vec<_>>(),
-            vec!["yesterday"]
-        );
+        let raw_ref: Option<String> = conn
+            .query_row("SELECT raw_ref FROM sessions WHERE id = ?1", [&id], |row| {
+                row.get(0)
+            })
+            .optional()
+            .map_err(|e| e.to_string())?;
 
-        let week = filter_session_items_by_time_range(sessions.clone(), Some("7d"), now);
-        assert_eq!(
-            week.iter().map(|item| item.id.as_str()).collect::<Vec<_>>(),
-            vec!["today", "midnight", "yesterday", "week"]
-        );
+        if let Some(ref path) = raw_ref {
+            if !path.is_empty() && std::path::Path::new(path).exists() {
+                std::fs::remove_file(path).map_err(|e| format!("delete file: {e}"))?;
+            }
+        }
 
-        let all = filter_session_items_by_time_range(sessions.clone(), Some("all"), now);
-        assert_eq!(all.len(), 5);
+        if let Some(ref path) = raw_ref {
+            conn.execute("DELETE FROM ingest_records WHERE scan_path = ?1", [path])
+                .map_err(|e| e.to_string())?;
+        }
 
-        let custom = filter_session_items_by_time_range(
-            sessions.clone(),
-            Some("custom:2026-04-22:2026-04-28"),
-            now,
-        );
-        assert_eq!(
-            custom
-                .iter()
-                .map(|item| item.id.as_str())
-                .collect::<Vec<_>>(),
-            vec!["today", "midnight", "yesterday", "week"]
-        );
+        conn.execute("DELETE FROM messages WHERE session_id = ?1", [&id])
+            .map_err(|e| e.to_string())?;
+        conn.execute("DELETE FROM sessions WHERE id = ?1", [&id])
+            .map_err(|e| e.to_string())?;
 
-        let invalid =
-            filter_session_items_by_time_range(sessions, Some("custom:2026-04-29:2026-04-01"), now);
-        assert!(invalid.is_empty());
-    }
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }

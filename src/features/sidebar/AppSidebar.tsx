@@ -1,6 +1,6 @@
 import { handleWindowDragPointerDown } from "../../lib/windowDrag";
 
-type AppView = "sessions" | "tokenUsage";
+type AppView = "sessions" | "tokenUsage" | "settings";
 
 type AppSidebarProps = {
   activeView: AppView;
@@ -55,8 +55,8 @@ export function AppSidebar({ activeView, onViewChange }: AppSidebarProps) {
           className={`app-sidebar-item${activeView === "tokenUsage" ? " is-active" : ""}`}
           type="button"
           onClick={() => onViewChange("tokenUsage")}
-          aria-label="Token 探测"
-          title="Token 探测"
+          aria-label="Token"
+          title="Token"
         >
           <BarChartIcon />
           <span className="app-sidebar-label">Token</span>
@@ -64,11 +64,11 @@ export function AppSidebar({ activeView, onViewChange }: AppSidebarProps) {
       </div>
       <div className="app-sidebar-bottom">
         <button
-          className="app-sidebar-item"
+          className={`app-sidebar-item${activeView === "settings" ? " is-active" : ""}`}
           type="button"
+          onClick={() => onViewChange("settings")}
           aria-label="设置"
           title="设置"
-          disabled
         >
           <GearIcon />
           <span className="app-sidebar-label">设置</span>

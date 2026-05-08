@@ -5,10 +5,10 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, FixedOffset};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TokenUsageProbeReport {
     pub files_scanned: usize,
     pub records_scanned: usize,
@@ -21,7 +21,7 @@ pub struct TokenUsageProbeReport {
     pub samples: Vec<TokenUsageSample>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TokenUsageBucket {
     pub date: String,
     pub source_id: String,
@@ -36,7 +36,7 @@ pub struct TokenUsageBucket {
     pub records_with_usage: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TokenUsageSample {
     pub source_id: String,
     pub model_id: String,

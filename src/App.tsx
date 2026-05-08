@@ -1,57 +1,26 @@
 import "./styles.css";
-import { startTransition, type PointerEvent, useEffect, useRef, useState } from "react";
-import { listen } from "@tauri-apps/api/event";
+import { startTransition, useEffect, useRef, useState } from "react";
 
-import { ToolbarRangeSelector, isValidCustomDateRange } from "./components/TimeRangeSelector";
+import { SettingsView } from "./features/settings/SettingsView";
 import { ThreePaneShell } from "./features/layout/ThreePaneShell";
 import { AppSidebar } from "./features/sidebar/AppSidebar";
-import { deleteSession, getSessionDetail, probeTokenUsageSources, scanSources } from "./lib/tauri";
+import { TimeRangeToolbar } from "./features/timeRange/TimeRangeToolbar";
+import { isDateInTimeRange } from "./features/timeRange/timeRange";
+import { deleteSession, getSessionDetail, getTokenReport, listSessions } from "./lib/tauri";
 import { handleWindowDragPointerDown } from "./lib/windowDrag";
 import { useSessionStore } from "./stores/useSessionStore";
 import type {
-  CustomDateRange,
-  SessionScanProgress,
   TimeRange,
-  TokenProbeProgress,
   TokenUsageBucket,
   TokenUsageProbeReport,
 } from "./types/session";
 
-type AppView = "sessions" | "tokenUsage";
-type TokenUsageRange = TimeRange;
+type AppView = "sessions" | "tokenUsage" | "settings";
 type TokenUsageSourceFilter = "all" | "claude_code" | "codex";
-type TokenLineMetric = {
-  key: keyof Pick<TokenUsageBucket, "inputTokens" | "outputTokens" | "cacheTokens" | "reasoningTokens">;
-  name: "input" | "output" | "cache" | "reasoning";
-};
 type TokenLinePoint = {
   x: number;
   y: number;
 };
-
-const tokenUsageRanges: Array<{ value: TokenUsageRange; label: string }> = [
-  { value: "today", label: "当日" },
-  { value: "yesterday", label: "昨天" },
-  { value: "7d", label: "最近 7 天" },
-  { value: "30d", label: "最近 30 天" },
-  { value: "custom", label: "自定义" },
-  { value: "all", label: "全部" },
-];
-const tokenUsageTimeZone = "Asia/Shanghai";
-const sessionScanTimeRanges: Array<{ value: TimeRange; label: string }> = [
-  { value: "today", label: "当日" },
-  { value: "yesterday", label: "昨天" },
-  { value: "7d", label: "最近 7 天" },
-  { value: "30d", label: "最近 30 天" },
-  { value: "custom", label: "自定义" },
-  { value: "all", label: "全部" },
-];
-const tokenLineMetrics: TokenLineMetric[] = [
-  { key: "inputTokens", name: "input" },
-  { key: "outputTokens", name: "output" },
-  { key: "cacheTokens", name: "cache" },
-  { key: "reasoningTokens", name: "reasoning" },
-];
 
 function formatTokenCount(value: number) {
   return `${formatCompactTokenNumber(value)} tokens`;
@@ -82,59 +51,9 @@ function formatCompactTokenNumber(value: number) {
   return `${formatted}${unit.suffix}`;
 }
 
-function serializeTimeRange(range: TimeRange, customRange: CustomDateRange) {
-  return range === "custom" && isValidCustomDateRange(customRange)
-    ? `custom:${customRange.startDate}:${customRange.endDate}`
-    : range;
-}
-
-export function filterBucketsByRange(
-  days: TokenUsageBucket[],
-  range: TokenUsageRange,
-  customRange: CustomDateRange = { startDate: "", endDate: "" },
-) {
-  const sortedDays = [...days]
-    .filter((day) => /^\d{4}-\d{2}-\d{2}$/.test(day.date))
-    .sort((a, b) => a.date.localeCompare(b.date));
-
-  if (range === "today") {
-    const latestDay = sortedDays[sortedDays.length - 1]?.date;
-    return latestDay ? sortedDays.filter((day) => day.date === latestDay) : [];
-  }
-
-  if (range === "yesterday") {
-    const latestDay = sortedDays[sortedDays.length - 1]?.date;
-    if (!latestDay) {
-      return [];
-    }
-
-    const yesterday = new Date(`${latestDay}T00:00:00Z`);
-    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
-    const yesterdayDate = yesterday.toISOString().slice(0, 10);
-    return sortedDays.filter((day) => day.date === yesterdayDate);
-  }
-
-  if (range === "custom") {
-    return isValidCustomDateRange(customRange)
-      ? sortedDays.filter((day) => day.date >= customRange.startDate && day.date <= customRange.endDate)
-      : [];
-  }
-
-  if (range === "all" || sortedDays.length === 0) {
-    return sortedDays;
-  }
-
-  const latest = new Date(`${sortedDays[sortedDays.length - 1].date}T00:00:00Z`);
-  const rangeDays = range === "7d" ? 7 : 30;
-  latest.setUTCDate(latest.getUTCDate() - rangeDays + 1);
-  const startDate = latest.toISOString().slice(0, 10);
-
-  return sortedDays.filter((day) => day.date >= startDate);
-}
-
 function getBeijingDateTimeParts(date: Date) {
   const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: tokenUsageTimeZone,
+    timeZone: "Asia/Shanghai",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -152,6 +71,20 @@ function getBeijingDateTimeParts(date: Date) {
 function getHourlySeriesEndHour(day: string, now = new Date()) {
   const current = getBeijingDateTimeParts(now);
   return day === current.date && !Number.isNaN(current.hour) ? current.hour : 23;
+}
+
+function getHourlyChartDay(timeRange: TimeRange, now = new Date()) {
+  if (timeRange === "today") {
+    return getBeijingDateTimeParts(now).date;
+  }
+
+  if (timeRange === "yesterday") {
+    const yesterday = new Date(now);
+    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+    return getBeijingDateTimeParts(yesterday).date;
+  }
+
+  return null;
 }
 
 function filterHourlyBucketsByDay(hours: TokenUsageBucket[], day: string, now = new Date()) {
@@ -276,29 +209,6 @@ export function getSmoothTokenLinePath(points: TokenLinePoint[]) {
   return commands.join(" ");
 }
 
-function getSmoothTokenAreaPath(points: TokenLinePoint[], baselineY: number) {
-  if (points.length === 0) {
-    return "";
-  }
-
-  const firstX = points[0].x;
-  const lastX = points[points.length - 1].x;
-
-  return [
-    getSmoothTokenLinePath(points),
-    `L ${formatSvgNumber(lastX)} ${formatSvgNumber(baselineY)}`,
-    `L ${formatSvgNumber(firstX)} ${formatSvgNumber(baselineY)}`,
-    "Z",
-  ].join(" ");
-}
-
-function getLatestUsageDay(days: TokenUsageBucket[]) {
-  return [...days]
-    .filter((day) => /^\d{4}-\d{2}-\d{2}$/.test(day.date))
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .slice(-1)[0]?.date ?? "";
-}
-
 function sumTokenBuckets(buckets: TokenUsageBucket[]) {
   return buckets.reduce(
     (total, bucket) => ({
@@ -370,6 +280,27 @@ function aggregateBucketsByDate(buckets: TokenUsageBucket[]) {
   return [...grouped.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
 
+function getTokenMetricPoints(
+  buckets: TokenUsageBucket[],
+  maxValue: number,
+  valueOf: (bucket: TokenUsageBucket) => number,
+): TokenLinePoint[] {
+  return buckets.map((bucket, index) => ({
+    x: getTokenLinePointX(index, buckets.length),
+    y: 100 - (valueOf(bucket) / maxValue) * 86,
+  }));
+}
+
+function getTokenLineAreaPath(points: TokenLinePoint[]) {
+  if (points.length === 0) {
+    return "";
+  }
+
+  const first = points[0];
+  const last = points[points.length - 1];
+  return `${getSmoothTokenLinePath(points)} L ${formatSvgNumber(last.x)} 100 L ${formatSvgNumber(first.x)} 100 Z`;
+}
+
 function aggregateModelBuckets(buckets: TokenUsageBucket[]) {
   const models = new Map<string, TokenUsageBucket>();
 
@@ -414,30 +345,35 @@ function formatTokenTooltip(bucket: TokenUsageBucket) {
   ].join("\n");
 }
 
-function TokenUsageSummary({
-  report,
-  range,
-  customRange,
-}: {
-  report: TokenUsageProbeReport;
-  range: TokenUsageRange;
-  customRange: CustomDateRange;
-}) {
+function TokenUsageSummary({ report, timeRange }: { report: TokenUsageProbeReport; timeRange: TimeRange }) {
   const [sourceFilter, setSourceFilter] = useState<TokenUsageSourceFilter>("all");
   const [modelFilter, setModelFilter] = useState("all");
   const [activeHourlyIndex, setActiveHourlyIndex] = useState<number | null>(null);
-  const isHourly = range === "today";
-  const latestDay = getLatestUsageDay(report.days);
-  const filteredDays = filterBucketsByRange(report.days, range, customRange);
-  const baseModelBuckets = isHourly
-    ? filterHourlyBucketsByDay(report.byModelByHour, latestDay)
-    : filterBucketsByRange(report.byModelByDay, range, customRange);
+  const filteredDays = report.days.filter((bucket) => isDateInTimeRange(bucket.date, timeRange));
+  const filteredModelDayBuckets = report.byModelByDay.filter((bucket) => isDateInTimeRange(bucket.date, timeRange));
+  const baseModelBuckets = timeRange === "all"
+    ? aggregateModelBuckets(report.byModel)
+    : aggregateModelBuckets(filteredModelDayBuckets);
   const filteredModelBuckets = filterTokenBuckets(baseModelBuckets, sourceFilter, modelFilter);
-  const chartBuckets = sourceFilter === "all" && modelFilter === "all"
-    ? (isHourly ? buildHourlySeries(report.hours, latestDay) : filteredDays)
-    : (isHourly
-      ? buildHourlySeries(aggregateBucketsByDate(filteredModelBuckets), latestDay)
-      : aggregateBucketsByDate(filteredModelBuckets));
+  const dailyChartBuckets = sourceFilter === "all" && modelFilter === "all"
+    ? filteredDays
+    : aggregateBucketsByDate(filteredModelBuckets);
+  const hourlyDay = getHourlyChartDay(timeRange);
+  const isHourly = Boolean(hourlyDay);
+  const hourlySourceBuckets = hourlyDay
+    ? sourceFilter === "all" && modelFilter === "all"
+      ? report.hours.filter((bucket) => bucket.date.startsWith(`${hourlyDay} `))
+      : aggregateBucketsByDate(
+          filterTokenBuckets(
+            report.byModelByHour.filter((bucket) => bucket.date.startsWith(`${hourlyDay} `)),
+            sourceFilter,
+            modelFilter,
+          ),
+        )
+    : [];
+  const chartBuckets = hourlyDay
+    ? buildHourlySeries(hourlySourceBuckets, hourlyDay)
+    : dailyChartBuckets;
   const totals = sumTokenBuckets(chartBuckets);
   const topModels = aggregateModelBuckets(filteredModelBuckets.length > 0 ? filteredModelBuckets : [])
     .sort((a, b) => b.totalTokens - a.totalTokens)
@@ -461,34 +397,55 @@ function TokenUsageSummary({
       setModelFilter("all");
     }
   }, [modelFilter, modelOptions, sourceFilter, sourceOptions]);
+  useEffect(() => {
+    if (!isHourly && activeHourlyIndex !== null) {
+      setActiveHourlyIndex(null);
+      return;
+    }
+
+    if (activeHourlyIndex !== null && activeHourlyIndex >= chartBuckets.length) {
+      setActiveHourlyIndex(null);
+    }
+  }, [activeHourlyIndex, chartBuckets.length, isHourly]);
   const maxChartTotal = Math.max(...chartBuckets.map((bucket) => bucket.totalTokens), 1);
   const maxLineValue = Math.max(
-    ...chartBuckets.flatMap((bucket) => tokenLineMetrics.map((metric) => bucket[metric.key])),
+    ...chartBuckets.flatMap((bucket) => [
+      bucket.inputTokens,
+      bucket.outputTokens,
+      bucket.cacheTokens,
+      bucket.reasoningTokens,
+    ]),
     1,
   );
-  const getLineY = (value: number) => 92 - (value / maxLineValue) * 84;
-  const lineSeries = tokenLineMetrics.map((metric) => {
-    const points = chartBuckets.map((bucket, index) => ({
-      x: getTokenLinePointX(index, chartBuckets.length),
-      y: getLineY(bucket[metric.key]),
-    }));
-
-    return {
-      ...metric,
-      path: getSmoothTokenLinePath(points),
-      areaPath: getSmoothTokenAreaPath(points, 92),
-    };
-  });
+  const tokenLineSeries = [
+    {
+      name: "input",
+      pathClassName: "token-line-path-input",
+      areaClassName: "token-line-area-input",
+      points: getTokenMetricPoints(chartBuckets, maxLineValue, (bucket) => bucket.inputTokens),
+    },
+    {
+      name: "output",
+      pathClassName: "token-line-path-output",
+      areaClassName: "token-line-area-output",
+      points: getTokenMetricPoints(chartBuckets, maxLineValue, (bucket) => bucket.outputTokens),
+    },
+    {
+      name: "cache",
+      pathClassName: "token-line-path-cache",
+      areaClassName: "token-line-area-cache",
+      points: getTokenMetricPoints(chartBuckets, maxLineValue, (bucket) => bucket.cacheTokens),
+    },
+    {
+      name: "reasoning",
+      pathClassName: "token-line-path-reasoning",
+      areaClassName: "token-line-area-reasoning",
+      points: getTokenMetricPoints(chartBuckets, maxLineValue, (bucket) => bucket.reasoningTokens),
+    },
+  ];
   const activeHourlyBucket = activeHourlyIndex === null ? null : chartBuckets[activeHourlyIndex] ?? null;
-  const activeHourlyLeft = activeHourlyIndex === null || chartBuckets.length === 0
-    ? 50
-    : Math.min(Math.max(((activeHourlyIndex + 0.5) / chartBuckets.length) * 100, 6), 94);
+  const activeHourlyLeft = activeHourlyIndex === null ? 0 : getTokenLinePointX(activeHourlyIndex, chartBuckets.length);
   const detailBuckets = filterVisibleTokenDetailBuckets(chartBuckets, isHourly);
-  const chartTitle = isHourly ? "按小时消耗" : "按天消耗";
-  const chartAriaLabel = isHourly ? "按小时 token 消耗折线图" : "按天 token 消耗柱状图";
-  const detailTitle = isHourly ? "按小时明细" : "按天明细";
-  const detailFirstColumn = isHourly ? "时间" : "日期";
-  const unitLabel = isHourly ? "小时" : "天";
   const summaryCards = [
     { label: "总量", value: totals.totalTokens, accent: "total" },
     { label: "输入", value: totals.inputTokens, accent: "input" },
@@ -496,10 +453,6 @@ function TokenUsageSummary({
     { label: "缓存", value: totals.cacheTokens, detail: `创建 ${formatTokenNumber(totals.cacheCreationTokens)} · 读取 ${formatTokenNumber(totals.cacheReadTokens)}`, accent: "cache" },
     { label: "思考", value: totals.reasoningTokens, accent: "reasoning" },
   ];
-  const handleTokenLinePointerMove = (event: PointerEvent<HTMLDivElement>) => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    setActiveHourlyIndex(getTokenLineHoverIndex(event.clientX, rect.left, rect.width, chartBuckets.length));
-  };
 
   return (
     <>
@@ -569,51 +522,45 @@ function TokenUsageSummary({
 
       <div className="token-chart-card">
         <div className="token-card-heading">
-          <h3>{chartTitle}</h3>
-          <span>{chartBuckets.length} {unitLabel} · {totals.recordsWithUsage} 条 usage</span>
+          <h3>{isHourly ? "按小时消耗" : "按天消耗"}</h3>
+          <span>{chartBuckets.length} {isHourly ? "小时" : "天"} · {totals.recordsWithUsage} 条 usage</span>
         </div>
         {chartBuckets.length > 0 ? (
           isHourly ? (
-            <div className="token-line-chart" aria-label={chartAriaLabel}>
+            <div
+              className="token-line-chart"
+              aria-label="按小时 token 消耗曲线图"
+              onMouseLeave={() => setActiveHourlyIndex(null)}
+            >
               <svg className="token-line-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-                {lineSeries.map((series) => (
+                {tokenLineSeries.map((series) => (
                   <path
-                    key={`${series.name}-area`}
-                    className={`token-line-area token-line-area-${series.name}`}
-                    d={series.areaPath}
+                    key={`${series.name}:area`}
+                    className={`token-line-area ${series.areaClassName}`}
+                    d={getTokenLineAreaPath(series.points)}
                   />
                 ))}
-                {lineSeries.map((series) => (
+                {tokenLineSeries.map((series) => (
                   <path
-                    key={`${series.name}-path`}
-                    className={`token-line-path token-line-path-${series.name}`}
-                    d={series.path}
+                    key={series.name}
+                    className={`token-line-path ${series.pathClassName}`}
+                    d={getSmoothTokenLinePath(series.points)}
                   />
                 ))}
               </svg>
-              <div
-                className="token-line-hitboxes"
-                onPointerMove={handleTokenLinePointerMove}
-                onPointerLeave={() => setActiveHourlyIndex(null)}
-              >
+              <div className="token-line-hitboxes">
                 {chartBuckets.map((bucket, index) => {
-                  const tooltip = formatTokenTooltip(bucket);
                   const width = 100 / chartBuckets.length;
-
                   return (
-                    <div
+                    <button
                       key={bucket.date}
-                      className={[
-                        "token-line-hitbox",
-                        bucket.totalTokens > 0 ? "has-usage" : "",
-                        activeHourlyIndex === index ? "is-active" : "",
-                      ].filter(Boolean).join(" ")}
-                      aria-label={tooltip}
-                      data-tooltip={tooltip}
-                      onFocus={() => setActiveHourlyIndex(index)}
-                      onBlur={() => setActiveHourlyIndex(null)}
+                      type="button"
+                      className={`token-line-hitbox${bucket.totalTokens > 0 ? " has-usage" : ""}${activeHourlyIndex === index ? " is-active" : ""}`}
                       style={{ left: `${index * width}%`, width: `${width}%` }}
-                      tabIndex={0}
+                      aria-label={`${bucket.date} token 消耗`}
+                      title={formatTokenTooltip(bucket)}
+                      onFocus={() => setActiveHourlyIndex(index)}
+                      onMouseEnter={() => setActiveHourlyIndex(index)}
                     />
                   );
                 })}
@@ -634,39 +581,39 @@ function TokenUsageSummary({
               </div>
             </div>
           ) : (
-            <div className="token-bar-chart" aria-label={chartAriaLabel}>
+            <div className="token-bar-chart" aria-label="按天 token 消耗柱状图">
               {chartBuckets.map((bucket) => {
-              const tooltip = formatTokenTooltip(bucket);
-              const height = Math.max((bucket.totalTokens / maxChartTotal) * 100, 4);
-              const inputWidth = bucket.totalTokens > 0 ? (bucket.inputTokens / bucket.totalTokens) * 100 : 0;
-              const outputWidth = bucket.totalTokens > 0 ? (bucket.outputTokens / bucket.totalTokens) * 100 : 0;
-              const cacheWidth = bucket.totalTokens > 0 ? (bucket.cacheTokens / bucket.totalTokens) * 100 : 0;
-              const reasoningWidth = bucket.totalTokens > 0 ? (bucket.reasoningTokens / bucket.totalTokens) * 100 : 0;
+                const tooltip = formatTokenTooltip(bucket);
+                const height = Math.max((bucket.totalTokens / maxChartTotal) * 100, 4);
+                const inputWidth = bucket.totalTokens > 0 ? (bucket.inputTokens / bucket.totalTokens) * 100 : 0;
+                const outputWidth = bucket.totalTokens > 0 ? (bucket.outputTokens / bucket.totalTokens) * 100 : 0;
+                const cacheWidth = bucket.totalTokens > 0 ? (bucket.cacheTokens / bucket.totalTokens) * 100 : 0;
+                const reasoningWidth = bucket.totalTokens > 0 ? (bucket.reasoningTokens / bucket.totalTokens) * 100 : 0;
 
-              return (
-                <div
-                  key={bucket.date}
-                  className="token-bar-item"
-                  data-tooltip={tooltip}
-                  title={tooltip}
-                  tabIndex={0}
-                >
-                  <div className="token-bar-track">
-                    <div className="token-bar-stack" style={{ height: `${height}%` }}>
-                      <span className="token-bar-segment token-bar-input" style={{ height: `${inputWidth}%` }} />
-                      <span className="token-bar-segment token-bar-output" style={{ height: `${outputWidth}%` }} />
-                      <span className="token-bar-segment token-bar-cache" style={{ height: `${cacheWidth}%` }} />
-                      <span className="token-bar-segment token-bar-reasoning" style={{ height: `${reasoningWidth}%` }} />
+                return (
+                  <div
+                    key={bucket.date}
+                    className="token-bar-item"
+                    data-tooltip={tooltip}
+                    title={tooltip}
+                    tabIndex={0}
+                  >
+                    <div className="token-bar-track">
+                      <div className="token-bar-stack" style={{ height: `${height}%` }}>
+                        <span className="token-bar-segment token-bar-input" style={{ height: `${inputWidth}%` }} />
+                        <span className="token-bar-segment token-bar-output" style={{ height: `${outputWidth}%` }} />
+                        <span className="token-bar-segment token-bar-cache" style={{ height: `${cacheWidth}%` }} />
+                        <span className="token-bar-segment token-bar-reasoning" style={{ height: `${reasoningWidth}%` }} />
+                      </div>
                     </div>
+                    <span className="token-bar-date">{bucket.date.slice(5)}</span>
                   </div>
-                  <span className="token-bar-date">{isHourly ? bucket.date.slice(11) : bucket.date.slice(5)}</span>
-                </div>
-              );
+                );
               })}
             </div>
           )
         ) : (
-          <p className="token-probe-empty">当前时间区间没有 usage 数据</p>
+          <p className="token-probe-empty">暂无 usage 数据</p>
         )}
         <div className="token-chart-legend">
           <span className="token-legend-input">输入 token</span>
@@ -678,11 +625,11 @@ function TokenUsageSummary({
 
       <div className="token-probe-grid">
         <div className="token-probe-card">
-          <h3>{detailTitle}</h3>
+          <h3>{isHourly ? "按小时明细" : "按天明细"}</h3>
           {detailBuckets.length > 0 ? (
             <div className="token-day-table">
               <div className="token-day-table-head">
-                <span>{detailFirstColumn}</span>
+                <span>{isHourly ? "时间" : "日期"}</span>
                 <span>总量</span>
                 <span>输入量</span>
                 <span>输出量</span>
@@ -691,7 +638,7 @@ function TokenUsageSummary({
               </div>
               {detailBuckets.slice().reverse().map((bucket) => (
                 <div key={bucket.date} className="token-day-table-row" title={formatTokenTooltip(bucket)}>
-                  <span>{isHourly ? bucket.date.slice(11) : bucket.date}</span>
+                  <span>{bucket.date}</span>
                   <strong>{formatTokenCount(bucket.totalTokens)}</strong>
                   <span>{formatTokenNumber(bucket.inputTokens)}</span>
                   <span>{formatTokenNumber(bucket.outputTokens)}</span>
@@ -716,118 +663,45 @@ function TokenUsageSummary({
   );
 }
 
-function progressSourceLabel(sourceId: string) {
-  return sourceId === "claude_code" ? "Claude Code" : sourceLabel(sourceId);
-}
-
-function compactProgressPath(path: string) {
-  return path
-    .replace(/^\/Users\/[^/]+/, "~")
-    .replace(/^\/home\/[^/]+/, "~");
-}
-
-function ActivityDots() {
-  return (
-    <span className="scan-progress-dots" aria-hidden="true">
-      <span />
-      <span />
-      <span />
-    </span>
-  );
-}
-
-function isProgressDone(phase: string) {
-  return phase.startsWith("完成");
-}
-
-function ProgressIndicator({ phase }: { phase: string }) {
-  return isProgressDone(phase)
-    ? <span className="scan-progress-complete" aria-hidden="true">✓</span>
-    : <ActivityDots />;
-}
-
-function TokenProbeProgressPanel({ progress }: { progress: TokenProbeProgress }) {
-  return (
-    <div
-      className={`token-progress-panel${isProgressDone(progress.phase) ? " is-complete" : ""}`}
-      role="status"
-      aria-label="Token 探测进度"
-    >
-      <div className="scan-progress-main">
-        <ProgressIndicator phase={progress.phase} />
-        <strong>{progressSourceLabel(progress.sourceId)}</strong>
-        <span>{progress.phase}</span>
-      </div>
-      <div className="scan-progress-path">{compactProgressPath(progress.path)}</div>
-      <div className="scan-progress-meta">
-        {progress.filesScanned} 个文件 · {progress.recordsScanned} 条记录 · {progress.recordsWithUsage} 条 usage
-      </div>
-    </div>
-  );
-}
-
 function TokenUsageView({
   report,
-  loading,
-  progress,
-  range,
-  customRange,
-  onRangeChange,
-  onCustomRangeChange,
-  rangeOptions,
-  onRefresh,
+  timeRange,
+  onTimeRangeChange,
 }: {
   report: TokenUsageProbeReport | null;
-  loading: boolean;
-  progress: TokenProbeProgress | null;
-  range: TokenUsageRange;
-  customRange: CustomDateRange;
-  onRangeChange: (range: TokenUsageRange) => void;
-  onCustomRangeChange: (range: CustomDateRange) => void;
-  rangeOptions: Array<{ value: TokenUsageRange; label: string }>;
-  onRefresh: () => void;
+  timeRange: TimeRange;
+  onTimeRangeChange: (timeRange: TimeRange) => void;
 }) {
+  if (!report) {
+    return (
+      <section className="token-usage-view" aria-label="Token usage view">
+        <header className="view-toolbar" data-tauri-drag-region onPointerDown={handleWindowDragPointerDown}>
+          <div className="view-toolbar-left" data-tauri-drag-region>
+            <h2 className="view-toolbar-title" data-tauri-drag-region>Token Usage</h2>
+          </div>
+        </header>
+        <div className="time-range-toolbar-row" data-tauri-drag-region onPointerDown={handleWindowDragPointerDown}>
+          <TimeRangeToolbar value={timeRange} onChange={onTimeRangeChange} />
+        </div>
+        <div className="token-probe-panel">
+          <p className="token-probe-empty">暂无 Token 数据，请在设置中扫描</p>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="token-usage-view" aria-label="Token usage view">
       <header className="view-toolbar" data-tauri-drag-region onPointerDown={handleWindowDragPointerDown}>
         <div className="view-toolbar-left" data-tauri-drag-region>
           <h2 className="view-toolbar-title" data-tauri-drag-region>Token Usage</h2>
-          <ToolbarRangeSelector
-            ariaLabel="Token usage time range"
-            options={rangeOptions}
-            value={range}
-            onChange={onRangeChange}
-            customRange={customRange}
-            onCustomRangeChange={onCustomRangeChange}
-          />
-        </div>
-        <div className="view-toolbar-right" data-tauri-drag-region>
-          <span className="token-probe-badge" data-tauri-drag-region>只读探测</span>
-          <button className="scan-button" type="button" onClick={onRefresh} disabled={loading}>
-            {loading ? "◷ 探测中" : "↻ 重新探测"}
-          </button>
         </div>
       </header>
+      <div className="time-range-toolbar-row" data-tauri-drag-region onPointerDown={handleWindowDragPointerDown}>
+        <TimeRangeToolbar value={timeRange} onChange={onTimeRangeChange} />
+      </div>
       <div className="token-probe-panel">
-        <div>
-          <p className="token-probe-description">
-            从 Claude Code 和 Codex 的本地历史中只读提取 usage 字段，优先展示精确 token 数据。
-          </p>
-        </div>
-
-        {loading ? (
-          progress ? <TokenProbeProgressPanel progress={progress} /> : (
-            <div className="token-probe-loading" role="status">
-              正在扫描本地历史 usage 字段...
-            </div>
-          )
-        ) : report ? (
-          <TokenUsageSummary report={report} range={range} customRange={customRange} />
-        ) : (
-          <div className="token-probe-loading" role="status">
-            暂无探测结果，请点击重新探测。
-          </div>
-        )}
+        <TokenUsageSummary report={report} timeRange={timeRange} />
       </div>
     </section>
   );
@@ -838,132 +712,75 @@ function App() {
   const selectedId = useSessionStore((s) => s.selectedId);
   const detail = useSessionStore((s) => s.detail);
   const detailLoading = useSessionStore((s) => s.detailLoading);
+  const detailRefreshKey = useSessionStore((s) => s.detailRefreshKey);
   const sourceFilter = useSessionStore((s) => s.sourceFilter);
   const projectFilter = useSessionStore((s) => s.projectFilter);
-  const timeRange = useSessionStore((s) => s.timeRange);
   const setSessions = useSessionStore((s) => s.setSessions);
   const setDetail = useSessionStore((s) => s.setDetail);
   const setDetailLoading = useSessionStore((s) => s.setDetailLoading);
   const updateFilters = useSessionStore((s) => s.updateFilters);
   const selectSession = useSessionStore((s) => s.selectSession);
-  const markScannedNow = useSessionStore((s) => s.markScannedNow);
-  const hasAutoScanned = useRef(false);
+  const hasLoadedSessions = useRef(false);
   const [activeView, setActiveView] = useState<AppView>("sessions");
-  const [tokenProbeReport, setTokenProbeReport] = useState<TokenUsageProbeReport | null>(null);
-  const [tokenProbeLoading, setTokenProbeLoading] = useState(false);
-  const [tokenUsageRange, setTokenUsageRange] = useState<TokenUsageRange>("today");
-  const [sessionCustomRange, setSessionCustomRange] = useState<CustomDateRange>({ startDate: "", endDate: "" });
-  const [tokenCustomRange, setTokenCustomRange] = useState<CustomDateRange>({ startDate: "", endDate: "" });
-  const [sessionScanLoading, setSessionScanLoading] = useState(false);
-  const [sessionScanProgress, setSessionScanProgress] = useState<SessionScanProgress | null>(null);
-  const [tokenProbeProgress, setTokenProbeProgress] = useState<TokenProbeProgress | null>(null);
-  const canUseSessionRange = timeRange !== "custom" || isValidCustomDateRange(sessionCustomRange);
-
-  async function handleRefresh() {
-    if (!canUseSessionRange) {
-      return;
-    }
-
-    setSessionScanLoading(true);
-    setSessionScanProgress(null);
-    try {
-      const nextSessions = await scanSources(serializeTimeRange(timeRange, sessionCustomRange));
-      setSessions(nextSessions);
-      markScannedNow();
-      setSessionScanProgress((current) => current ? { ...current, phase: "完成" } : null);
-    } catch (error) {
-      console.error(error);
-      setSessions([]);
-    } finally {
-      setSessionScanLoading(false);
-    }
-  }
+  const [tokenReport, setTokenReport] = useState<TokenUsageProbeReport | null>(null);
+  const [sessionTimeRange, setSessionTimeRange] = useState<TimeRange>("today");
+  const [tokenTimeRange, setTokenTimeRange] = useState<TimeRange>("today");
 
   async function handleDelete(id: string) {
     try {
       await deleteSession(id);
-      await handleRefresh();
+      const nextSessions = await listSessions();
+      setSessions(nextSessions);
     } catch (error) {
       console.error(error);
     }
   }
 
-  async function handleTokenProbe() {
-    setTokenProbeLoading(true);
-    setTokenProbeProgress(null);
-    try {
-      const report = await probeTokenUsageSources();
-      setTokenProbeReport(report);
-      setTokenProbeProgress((current) => current ? { ...current, phase: "完成" } : null);
-    } catch (error) {
-      console.error(error);
-      setTokenProbeReport({
-        filesScanned: 0,
-        recordsScanned: 0,
-        recordsWithUsage: 0,
-        days: [],
-        hours: [],
-        byModel: [],
-        byModelByDay: [],
-        byModelByHour: [],
-        samples: [],
-      });
-    } finally {
-      setTokenProbeLoading(false);
-    }
+  async function refreshSessions() {
+    const nextSessions = await listSessions();
+    setSessions(nextSessions);
   }
 
-  async function handleOpenTokenUsage() {
-    setActiveView("tokenUsage");
-    await handleTokenProbe();
+  async function refreshTokenReport() {
+    const nextReport = await getTokenReport();
+    setTokenReport(nextReport);
+  }
+
+  async function handleScanComplete() {
+    await Promise.all([
+      refreshSessions(),
+      refreshTokenReport(),
+    ]);
   }
 
   function handleSessionFilterChange(next: {
     sourceFilter?: "all" | "claude_code" | "codex";
     projectFilter?: string;
-    timeRange?: TimeRange;
   }) {
     updateFilters(next);
+  }
 
-    if (next.timeRange && next.timeRange !== timeRange) {
-      setSessions([]);
-      setDetail(null);
-      setDetailLoading(false);
+  function handleViewChange(view: AppView) {
+    setActiveView(view);
+    if (view === "tokenUsage" && !tokenReport) {
+      void getTokenReport()
+        .then(setTokenReport)
+        .catch(console.error);
     }
   }
 
+  // Auto-load sessions from SQLite on mount
   useEffect(() => {
-    let cancelled = false;
-    let cleanupSession: (() => void) | null = null;
-    let cleanupToken: (() => void) | null = null;
+    if (hasLoadedSessions.current) {
+      return;
+    }
+    hasLoadedSessions.current = true;
+    listSessions()
+      .then(setSessions)
+      .catch(console.error);
+  }, [setSessions]);
 
-    void listen<SessionScanProgress>("session-scan-progress", (event) => {
-      setSessionScanProgress(event.payload);
-    }).then((unlisten) => {
-      if (cancelled) {
-        unlisten();
-        return;
-      }
-      cleanupSession = unlisten;
-    });
-
-    void listen<TokenProbeProgress>("token-probe-progress", (event) => {
-      setTokenProbeProgress(event.payload);
-    }).then((unlisten) => {
-      if (cancelled) {
-        unlisten();
-        return;
-      }
-      cleanupToken = unlisten;
-    });
-
-    return () => {
-      cancelled = true;
-      cleanupSession?.();
-      cleanupToken?.();
-    };
-  }, []);
-
+  // Load detail when selected session changes or is explicitly refreshed.
   useEffect(() => {
     let cancelled = false;
 
@@ -999,41 +816,20 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [selectedId, setDetail]);
-
-  useEffect(() => {
-    if (hasAutoScanned.current) {
-      return;
-    }
-
-    hasAutoScanned.current = true;
-    void handleRefresh();
-  }, []);
-
-  function handleViewChange(view: AppView) {
-    if (view === "tokenUsage" && activeView !== "tokenUsage") {
-      void handleOpenTokenUsage();
-    } else {
-      setActiveView(view);
-    }
-  }
+  }, [selectedId, detailRefreshKey, setDetail, setDetailLoading]);
 
   return (
     <main className="app-shell">
       <AppSidebar activeView={activeView} onViewChange={handleViewChange} />
       <div className="app-main">
         <div className="viewer-shell">
-          {activeView === "tokenUsage" ? (
+          {activeView === "settings" ? (
+            <SettingsView onScanComplete={handleScanComplete} />
+          ) : activeView === "tokenUsage" ? (
             <TokenUsageView
-              report={tokenProbeReport}
-              loading={tokenProbeLoading}
-              progress={tokenProbeProgress}
-              range={tokenUsageRange}
-              customRange={tokenCustomRange}
-              onRangeChange={setTokenUsageRange}
-              onCustomRangeChange={setTokenCustomRange}
-              rangeOptions={tokenUsageRanges}
-              onRefresh={() => void handleTokenProbe()}
+              report={tokenReport}
+              timeRange={tokenTimeRange}
+              onTimeRangeChange={setTokenTimeRange}
             />
           ) : (
             <ThreePaneShell
@@ -1043,19 +839,11 @@ function App() {
               detailLoading={detailLoading}
               sourceFilter={sourceFilter}
               projectFilter={projectFilter}
-              scanProgress={sessionScanProgress}
-              onDismissScanProgress={() => setSessionScanProgress(null)}
+              timeRange={sessionTimeRange}
               onFilterChange={handleSessionFilterChange}
+              onTimeRangeChange={setSessionTimeRange}
               onSelect={selectSession}
               onDelete={handleDelete}
-              timeRange={timeRange}
-              customRange={sessionCustomRange}
-              onTimeRangeChange={(value) => handleSessionFilterChange({ timeRange: value })}
-              onCustomRangeChange={setSessionCustomRange}
-              rangeOptions={sessionScanTimeRanges}
-              onScan={() => void handleRefresh()}
-              scanLoading={sessionScanLoading}
-              canScan={canUseSessionRange}
             />
           )}
         </div>

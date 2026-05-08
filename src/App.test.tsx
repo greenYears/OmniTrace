@@ -1,5 +1,4 @@
-import { StrictMode } from "react";
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -13,9 +12,12 @@ const windowMock = vi.hoisted(() => ({
 }));
 
 vi.mock("./lib/tauri", () => ({
-  scanSources: vi.fn(),
+  listSessions: vi.fn(),
   getSessionDetail: vi.fn(),
-  probeTokenUsageSources: vi.fn(),
+  getTokenReport: vi.fn(),
+  deleteSession: vi.fn(),
+  getScanStats: vi.fn(),
+  scanAllData: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/api/event", () => ({
@@ -28,24 +30,38 @@ vi.mock("@tauri-apps/api/window", () => ({
 
 import App, {
   buildHourlySeries,
-  filterBucketsByRange,
   filterVisibleTokenDetailBuckets,
   getSmoothTokenLinePath,
   getTokenLineHoverIndex,
   getTokenLinePointX,
 } from "./App";
-import { getSessionDetail, probeTokenUsageSources, scanSources } from "./lib/tauri";
+import { getSessionDetail, getScanStats, listSessions, getTokenReport, scanAllData } from "./lib/tauri";
 import { useSessionStore } from "./stores/useSessionStore";
 
 describe("App", () => {
   const getSessionDetailMock = vi.mocked(getSessionDetail);
-  const probeTokenUsageSourcesMock = vi.mocked(probeTokenUsageSources);
-  const scanSourcesMock = vi.mocked(scanSources);
+  const listSessionsMock = vi.mocked(listSessions);
+  const getTokenReportMock = vi.mocked(getTokenReport);
+  const getScanStatsMock = vi.mocked(getScanStats);
+  const scanAllDataMock = vi.mocked(scanAllData);
+
+  function getBeijingDateForTest(date = new Date()) {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Shanghai",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(date);
+    const valueOf = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? "";
+    return `${valueOf("year")}-${valueOf("month")}-${valueOf("day")}`;
+  }
 
   beforeEach(() => {
-    scanSourcesMock.mockReset();
+    listSessionsMock.mockReset();
     getSessionDetailMock.mockReset();
-    probeTokenUsageSourcesMock.mockReset();
+    getTokenReportMock.mockReset();
+    getScanStatsMock.mockReset();
+    scanAllDataMock.mockReset();
     eventMock.listeners.clear();
     eventMock.listen.mockReset();
     eventMock.listen.mockImplementation((eventName, handler) => {
@@ -67,21 +83,23 @@ describe("App", () => {
       detailLoading: false,
       sourceFilter: "all",
       projectFilter: "all",
-      timeRange: "today",
-      lastScannedAt: null,
+      detailRefreshKey: 0,
     });
-    scanSourcesMock.mockResolvedValue([]);
+    listSessionsMock.mockResolvedValue([]);
     getSessionDetailMock.mockResolvedValue(null);
-    probeTokenUsageSourcesMock.mockResolvedValue({
+    getTokenReportMock.mockResolvedValue(null);
+    scanAllDataMock.mockResolvedValue({
+      sessionCount: 0,
+      messageCount: 0,
       filesScanned: 0,
       recordsScanned: 0,
       recordsWithUsage: 0,
-      days: [],
-      hours: [],
-      byModel: [],
-      byModelByDay: [],
-      byModelByHour: [],
-      samples: [],
+      lastScannedAt: "2026-05-08T10:00:00",
+    });
+    getScanStatsMock.mockResolvedValue({
+      sessionCount: 0,
+      messageCount: 0,
+      lastScannedAt: null,
     });
   });
 
@@ -89,148 +107,89 @@ describe("App", () => {
     vi.useRealTimers();
   });
 
-  function createDeferred<T>() {
-    let resolve!: (value: T) => void;
-    let reject!: (reason?: unknown) => void;
+  it("no longer renders scan progress in session view (moved to settings)", async () => {
+    render(<App />);
 
-    const promise = new Promise<T>((res, rej) => {
-      resolve = res;
-      reject = rej;
-    });
-
-    return { promise, resolve, reject };
-  }
-
-  function createTokenBucket(date: string) {
-    return {
-      date,
-      sourceId: "",
-      modelId: "",
-      inputTokens: 0,
-      outputTokens: 0,
-      cacheCreationTokens: 0,
-      cacheReadTokens: 0,
-      cacheTokens: 0,
-      reasoningTokens: 0,
-      totalTokens: 0,
-      recordsWithUsage: 0,
-    };
-  }
-
-  it("renders live session scan progress from backend events", async () => {
-    const scan = createDeferred<Awaited<ReturnType<typeof scanSources>>>();
-    scanSourcesMock.mockReturnValue(scan.promise);
-
-    const { container } = render(<App />);
-
-    await waitFor(() => {
-      expect(eventMock.listeners.has("session-scan-progress")).toBe(true);
-    });
-
-    act(() => {
-      eventMock.listeners.get("session-scan-progress")?.({
-        payload: {
-          sourceId: "codex",
-          phase: "解析会话",
-          path: "/Users/test/.codex/sessions/2026/04/29",
-          filesScanned: 4,
-          sessionsFound: 2,
-        },
-      });
-    });
-
-    const status = await screen.findByRole("status", { name: "扫描进度" });
-    expect(status).toHaveTextContent("Codex");
-    expect(status).toHaveTextContent("解析会话");
-    expect(status).toHaveTextContent("~/.codex/sessions/2026/04/29");
-
-    await act(async () => {
-      scan.resolve([]);
-    });
-
-    await waitFor(() => {
-      expect(screen.getByRole("status", { name: "扫描进度" })).toHaveTextContent("完成");
-    });
-    expect(container.querySelector(".scan-progress-dots")).not.toBeInTheDocument();
-    expect(container.querySelector(".scan-progress-complete")).toBeInTheDocument();
-
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "关闭扫描进度" }));
-
-    expect(screen.queryByRole("status", { name: "扫描进度" })).not.toBeInTheDocument();
+    // Scan progress is now shown only in SettingsView, not in the session shell
+    expect(eventMock.listeners.has("session-scan-progress")).toBe(false);
   });
 
-  it("renders live token probe progress from backend events", async () => {
-    const probe = createDeferred<Awaited<ReturnType<typeof probeTokenUsageSources>>>();
-    probeTokenUsageSourcesMock.mockReturnValue(probe.promise);
+  it("loads sessions from SQLite on mount", async () => {
+    listSessionsMock.mockResolvedValue([
+      {
+        id: "session:codex:abc",
+        sourceId: "codex",
+        title: "Codex: project-b",
+        updatedAt: "2026-04-27T10:00:00Z",
+        projectName: "project-b",
+        projectPath: "/tmp/project-b",
+        messageCount: 2,
+        preview: "Open this session.",
+        fileSize: 0,
+        modelId: "",
+      },
+    ]);
 
-    const { container } = render(<App />);
-
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "◷ Token 探测" }));
+    render(<App />);
 
     await waitFor(() => {
-      expect(eventMock.listeners.has("token-probe-progress")).toBe(true);
+      expect(listSessionsMock).toHaveBeenCalled();
     });
-
-    act(() => {
-      eventMock.listeners.get("token-probe-progress")?.({
-        payload: {
-          sourceId: "claude_code",
-          phase: "读取 usage",
-          path: "/Users/test/.claude/projects/project-a/session.jsonl",
-          filesScanned: 3,
-          recordsScanned: 20,
-          recordsWithUsage: 5,
-        },
-      });
-    });
-
-    const status = await screen.findByRole("status", { name: "Token 探测进度" });
-    expect(status).toHaveTextContent("Claude Code");
-    expect(status).toHaveTextContent("读取 usage");
-    expect(status).toHaveTextContent("~/.claude/projects/project-a/session.jsonl");
-
-    await act(async () => {
-      probe.resolve({
-        filesScanned: 0,
-        recordsScanned: 0,
-        recordsWithUsage: 0,
-        days: [],
-        hours: [],
-        byModel: [],
-        byModelByDay: [],
-        byModelByHour: [],
-        samples: [],
-      });
-    });
-
-    expect(container.querySelector(".scan-progress-dots")).not.toBeInTheDocument();
   });
 
-  it("renders the OmniTrace shell header with the scanned empty state", async () => {
-    render(
-      <StrictMode>
-        <App />
-      </StrictMode>,
-    );
+  it("defaults session and token time ranges to today", async () => {
+    render(<App />);
 
-    expect(screen.getByRole("heading", { name: "OmniTrace" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "↻ 扫描" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "◷ Token 探测" })).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "全部" })).toHaveLength(3);
-    expect(screen.getByRole("button", { name: "Codex" })).toBeInTheDocument();
-    expect(await screen.findByText("未找到符合条件的会话")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "今天" })).toHaveClass("is-selected");
 
-    await waitFor(() => {
-      expect(scanSourcesMock).toHaveBeenCalledWith("today");
-    });
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Token" }));
 
-    expect(screen.getByText(/0 个会话/)).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "今天" })).toHaveClass("is-selected");
+  });
 
-    expect(
-      screen.queryByRole("button", { name: "Codex: project-a" }),
-    ).not.toBeInTheDocument();
+  it("filters session list from the top time range toolbar", async () => {
+    listSessionsMock.mockResolvedValue([
+      {
+        id: "session:codex:today",
+        sourceId: "codex",
+        title: "Codex: today-project",
+        updatedAt: new Date().toISOString(),
+        projectName: "today-project",
+        projectPath: "/tmp/today-project",
+        messageCount: 2,
+        preview: "Today session.",
+        fileSize: 0,
+        modelId: "",
+      },
+      {
+        id: "session:codex:old",
+        sourceId: "codex",
+        title: "Codex: old-project",
+        updatedAt: "2026-01-01T10:00:00Z",
+        projectName: "old-project",
+        projectPath: "/tmp/old-project",
+        messageCount: 2,
+        preview: "Old session.",
+        fileSize: 0,
+        modelId: "",
+      },
+    ]);
+
+    render(<App />);
+
+    expect(await screen.findByRole("button", { name: "Codex: today-project" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Codex: old-project" })).not.toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getAllByRole("button", { name: "全部" })[0]);
+
+    expect(screen.getByRole("button", { name: "Codex: old-project" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "今天" }));
+
+    expect(screen.getByRole("button", { name: "Codex: today-project" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Codex: old-project" })).not.toBeInTheDocument();
   });
 
   it("marks non-interactive titlebar areas as Tauri drag regions", async () => {
@@ -238,130 +197,58 @@ describe("App", () => {
 
     expect(container.querySelector(".app-sidebar-top")).toHaveAttribute("data-tauri-drag-region");
     expect(container.querySelector(".app-sidebar-logo")).toHaveAttribute("data-tauri-drag-region");
-    expect(container.querySelector(".view-toolbar-left")).toHaveAttribute("data-tauri-drag-region");
-    expect(container.querySelector(".view-toolbar-right")).toHaveAttribute("data-tauri-drag-region");
+    expect(container.querySelector(".three-pane-shell")).toHaveAttribute("data-tauri-drag-region");
   });
 
-  it("starts window dragging from toolbar blank space but not from scan controls", () => {
+  it("starts window dragging from session viewer blank space", () => {
     const { container } = render(<App />);
 
-    fireEvent.pointerDown(container.querySelector(".view-toolbar-right")!, { button: 0 });
-
-    expect(windowMock.startDragging).toHaveBeenCalledTimes(1);
-
-    fireEvent.pointerDown(screen.getByRole("button", { name: /扫描/ }), { button: 0 });
+    fireEvent.pointerDown(container.querySelector(".three-pane-shell")!, { button: 0 });
 
     expect(windowMock.startDragging).toHaveBeenCalledTimes(1);
   });
 
-  it("offers yesterday in session and token time range selectors", async () => {
-    render(<App />);
-
-    expect(screen.getByRole("button", { name: "昨天" })).toBeInTheDocument();
-
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Token 探测" }));
-
-    expect(await screen.findByRole("button", { name: "昨天" })).toBeInTheDocument();
-  });
-
-  it("scans sessions with the yesterday time range", async () => {
-    scanSourcesMock
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([
+  it("switches to token usage view and loads report", async () => {
+    getTokenReportMock.mockResolvedValue({
+      filesScanned: 3,
+      recordsScanned: 20,
+      recordsWithUsage: 4,
+      days: [
         {
-          id: "session:codex:yesterday",
-          sourceId: "codex",
-          title: "Codex: yesterday",
-          updatedAt: "2026-04-27T10:00:00Z",
-          projectName: "yesterday",
-          projectPath: "/tmp/yesterday",
-          messageCount: 1,
-          preview: "yesterday",
-          fileSize: 0,
+          date: "2026-04-20",
+          sourceId: "",
           modelId: "",
+          inputTokens: 1100,
+          outputTokens: 600,
+          cacheCreationTokens: 30,
+          cacheReadTokens: 150,
+          cacheTokens: 180,
+          reasoningTokens: 90,
+          totalTokens: 1970,
+          recordsWithUsage: 2,
         },
-      ]);
-
-    render(<App />);
-
-    await waitFor(() => {
-      expect(scanSourcesMock).toHaveBeenCalledWith("today");
+      ],
+      byModel: [],
+      byModelByDay: [],
+      hours: [],
+      byModelByHour: [],
+      samples: [],
     });
 
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "昨天" }));
-    await user.click(screen.getByRole("button", { name: "↻ 扫描" }));
-
-    expect(await screen.findByRole("button", { name: "Codex: yesterday" })).toBeInTheDocument();
-    expect(scanSourcesMock).toHaveBeenLastCalledWith("yesterday");
-  });
-
-  it("clears stale sessions when the session scan time range changes and scans with the selected range", async () => {
-    scanSourcesMock
-      .mockResolvedValueOnce([
-        {
-          id: "session:codex:today",
-          sourceId: "codex",
-          title: "Codex: today",
-          updatedAt: "2026-04-28T10:00:00Z",
-          projectName: "today",
-          projectPath: "/tmp/today",
-          messageCount: 1,
-          preview: "today",
-          fileSize: 0,
-          modelId: "",
-        },
-      ])
-      .mockResolvedValueOnce([
-        {
-          id: "session:claude:week",
-          sourceId: "claude_code",
-          title: "Claude: week",
-          updatedAt: "2026-04-27T10:00:00Z",
-          projectName: "week",
-          projectPath: "/tmp/week",
-          messageCount: 1,
-          preview: "week",
-          fileSize: 0,
-          modelId: "",
-        },
-      ]);
-
-    render(<App />);
-
-    expect(await screen.findByRole("button", { name: "Codex: today" })).toBeInTheDocument();
-
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "最近 7 天" }));
-
-    expect(screen.queryByRole("button", { name: "Codex: today" })).not.toBeInTheDocument();
-    expect(screen.getByText("未找到符合条件的会话")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "↻ 扫描" }));
-
-    expect(await screen.findByRole("button", { name: "Claude: week" })).toBeInTheDocument();
-    expect(scanSourcesMock).toHaveBeenNthCalledWith(1, "today");
-    expect(scanSourcesMock).toHaveBeenNthCalledWith(2, "7d");
-  });
-
-  it("scans sessions with a custom date range", async () => {
     render(<App />);
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "自定义" }));
-    expect(screen.getByRole("group", { name: "自定义时间范围" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "开始月份 04" }));
-    await user.click(screen.getByRole("button", { name: "开始日期 01" }));
-    await user.click(screen.getByRole("button", { name: "结束月份 04" }));
-    await user.click(screen.getByRole("button", { name: "结束日期 30" }));
-    await user.click(screen.getByRole("button", { name: "↻ 扫描" }));
+    await user.click(screen.getByRole("button", { name: "Token" }));
 
-    expect(scanSourcesMock).toHaveBeenLastCalledWith("custom:2026-04-01:2026-04-30");
+    await waitFor(() => {
+      expect(getTokenReportMock).toHaveBeenCalled();
+    });
+
+    expect(screen.getByText("3 个文件 · 20 条记录 · 4 条 usage")).toBeInTheDocument();
   });
 
-  it("opens token usage as a standalone view and returns to sessions", async () => {
-    probeTokenUsageSourcesMock.mockResolvedValue({
+  it("filters token usage from the top time range toolbar", async () => {
+    getTokenReportMock.mockResolvedValue({
       filesScanned: 3,
       recordsScanned: 20,
       recordsWithUsage: 4,
@@ -380,222 +267,52 @@ describe("App", () => {
           recordsWithUsage: 2,
         },
         {
-          date: "2026-04-01",
+          date: "2026-01-01",
           sourceId: "",
           modelId: "",
-          inputTokens: 20,
-          outputTokens: 10,
+          inputTokens: 200,
+          outputTokens: 100,
           cacheCreationTokens: 0,
           cacheReadTokens: 0,
           cacheTokens: 0,
           reasoningTokens: 0,
-          totalTokens: 30,
+          totalTokens: 300,
           recordsWithUsage: 1,
         },
       ],
       byModel: [
         {
           date: "",
-          sourceId: "claude_code",
-          modelId: "claude-sonnet-4",
-          inputTokens: 100,
-          outputTokens: 200,
-          cacheCreationTokens: 30,
-          cacheReadTokens: 40,
-          cacheTokens: 70,
-          reasoningTokens: 90,
-          totalTokens: 460,
-          recordsWithUsage: 1,
-        },
-        {
-          date: "",
           sourceId: "codex",
-          modelId: "gpt-5.4-codex",
-          inputTokens: 1000,
-          outputTokens: 400,
-          cacheCreationTokens: 0,
-          cacheReadTokens: 110,
-          cacheTokens: 110,
-          reasoningTokens: 0,
-          totalTokens: 1510,
-          recordsWithUsage: 1,
+          modelId: "gpt-5",
+          inputTokens: 1300,
+          outputTokens: 700,
+          cacheCreationTokens: 30,
+          cacheReadTokens: 150,
+          cacheTokens: 180,
+          reasoningTokens: 90,
+          totalTokens: 2270,
+          recordsWithUsage: 3,
         },
       ],
       byModelByDay: [
         {
           date: "2026-04-20",
-          sourceId: "claude_code",
-          modelId: "claude-sonnet-4",
-          inputTokens: 100,
-          outputTokens: 200,
-          cacheCreationTokens: 30,
-          cacheReadTokens: 40,
-          cacheTokens: 70,
-          reasoningTokens: 90,
-          totalTokens: 460,
-          recordsWithUsage: 1,
-        },
-        {
-          date: "2026-04-20",
           sourceId: "codex",
-          modelId: "gpt-5.4-codex",
-          inputTokens: 1000,
-          outputTokens: 400,
-          cacheCreationTokens: 0,
-          cacheReadTokens: 110,
-          cacheTokens: 110,
-          reasoningTokens: 0,
-          totalTokens: 1510,
-          recordsWithUsage: 1,
-        },
-      ],
-      hours: [
-        {
-          date: "2026-04-20 05:00",
-          sourceId: "",
-          modelId: "",
-          inputTokens: 1000,
-          outputTokens: 400,
-          cacheCreationTokens: 0,
-          cacheReadTokens: 110,
-          cacheTokens: 110,
-          reasoningTokens: 0,
-          totalTokens: 1510,
-          recordsWithUsage: 1,
-        },
-        {
-          date: "2026-04-20 09:00",
-          sourceId: "",
-          modelId: "",
-          inputTokens: 100,
-          outputTokens: 200,
+          modelId: "gpt-5",
+          inputTokens: 1100,
+          outputTokens: 600,
           cacheCreationTokens: 30,
-          cacheReadTokens: 40,
-          cacheTokens: 70,
+          cacheReadTokens: 150,
+          cacheTokens: 180,
           reasoningTokens: 90,
-          totalTokens: 460,
-          recordsWithUsage: 1,
-        },
-      ],
-      byModelByHour: [
-        {
-          date: "2026-04-20 09:00",
-          sourceId: "claude_code",
-          modelId: "claude-sonnet-4",
-          inputTokens: 100,
-          outputTokens: 200,
-          cacheCreationTokens: 30,
-          cacheReadTokens: 40,
-          cacheTokens: 70,
-          reasoningTokens: 90,
-          totalTokens: 460,
-          recordsWithUsage: 1,
+          totalTokens: 1970,
+          recordsWithUsage: 2,
         },
         {
-          date: "2026-04-20 05:00",
+          date: "2026-01-01",
           sourceId: "codex",
-          modelId: "gpt-5.4-codex",
-          inputTokens: 1000,
-          outputTokens: 400,
-          cacheCreationTokens: 0,
-          cacheReadTokens: 110,
-          cacheTokens: 110,
-          reasoningTokens: 0,
-          totalTokens: 1510,
-          recordsWithUsage: 1,
-        },
-      ],
-      samples: [],
-    });
-
-    const { container } = render(<App />);
-
-    expect(await screen.findByText("未找到符合条件的会话")).toBeInTheDocument();
-
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "◷ Token 探测" }));
-
-    expect(await screen.findByText("Token Usage 探测")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "← 返回会话" })).toBeInTheDocument();
-    expect(screen.queryByText("未找到符合条件的会话")).not.toBeInTheDocument();
-    expect(screen.getByText("3 个文件 · 20 条记录 · 4 条 usage")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Claude Code" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Codex" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "claude-sonnet-4" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "gpt-5.4-codex" })).toBeInTheDocument();
-    expect(screen.getByLabelText("按小时 token 消耗折线图")).toBeInTheDocument();
-    expect(container.querySelectorAll(".token-line-hitbox")).toHaveLength(24);
-    expect(container.querySelector(".token-line-path-input")).toBeInTheDocument();
-    expect(container.querySelector(".token-line-path-output")).toBeInTheDocument();
-    expect(container.querySelector(".token-line-path-cache")).toBeInTheDocument();
-    expect(container.querySelector(".token-line-path-reasoning")).toBeInTheDocument();
-    expect(screen.getAllByText("00:00").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("05:00").length).toBeGreaterThan(0);
-    expect(screen.getAllByLabelText(/2026-04-20 00:00[\s\S]*总量: 0 tokens/).length).toBeGreaterThan(0);
-    expect(screen.getAllByLabelText(/2026-04-20 05:00[\s\S]*总量: 1\.5k tokens/).length).toBeGreaterThan(0);
-    expect(screen.getByText("2k")).toBeInTheDocument();
-    expect(screen.getByText("输入")).toBeInTheDocument();
-    expect(screen.getByText("1.1k tokens")).toBeInTheDocument();
-    expect(screen.getByText("输出")).toBeInTheDocument();
-    expect(screen.getByText("600 tokens")).toBeInTheDocument();
-    expect(screen.getByText("缓存")).toBeInTheDocument();
-    expect(screen.getByText("180 tokens")).toBeInTheDocument();
-    expect(screen.getByText("思考")).toBeInTheDocument();
-    expect(screen.getByText("90 tokens")).toBeInTheDocument();
-    expect(screen.getByText("codex · gpt-5.4-codex")).toBeInTheDocument();
-    expect(screen.getByText("claude_code · claude-sonnet-4")).toBeInTheDocument();
-    expect(screen.getAllByText("1.5k tokens").length).toBeGreaterThan(0);
-
-    await user.click(screen.getByRole("button", { name: "Codex" }));
-    expect(screen.getByText("1.5k")).toBeInTheDocument();
-    expect(screen.queryByText("claude_code · claude-sonnet-4")).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "gpt-5.4-codex" }));
-    expect(screen.getByRole("button", { name: "gpt-5.4-codex" })).toHaveClass("is-selected");
-    await user.click(within(screen.getByLabelText("Token usage source filter")).getByRole("button", { name: "全部" }));
-
-    await user.click(screen.getByRole("button", { name: "最近 7 天" }));
-    expect(screen.getByText("2026-04-20")).toBeInTheDocument();
-    expect(screen.getByText("2k tokens")).toBeInTheDocument();
-    expect(screen.getByText("1.1k tokens")).toBeInTheDocument();
-    expect(screen.getByText("600 tokens")).toBeInTheDocument();
-    expect(screen.getByText("180 tokens")).toBeInTheDocument();
-    expect(screen.getByText("90 tokens")).toBeInTheDocument();
-    expect(screen.getByLabelText("按天 token 消耗柱状图")).toBeInTheDocument();
-
-    expect(screen.queryByText("2026-04-01")).not.toBeInTheDocument();
-
-    await user.click(within(screen.getByLabelText("Token usage time range")).getByRole("button", { name: "全部" }));
-    expect(screen.getByText("2026-04-01")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "← 返回会话" }));
-
-    expect(await screen.findByText("未找到符合条件的会话")).toBeInTheDocument();
-  });
-
-  it("limits token source and model options to the selected range and source", async () => {
-    probeTokenUsageSourcesMock.mockResolvedValue({
-      filesScanned: 2,
-      recordsScanned: 8,
-      recordsWithUsage: 2,
-      days: [
-        {
-          date: "2026-04-28",
-          sourceId: "",
-          modelId: "",
-          inputTokens: 100,
-          outputTokens: 50,
-          cacheCreationTokens: 0,
-          cacheReadTokens: 0,
-          cacheTokens: 0,
-          reasoningTokens: 0,
-          totalTokens: 150,
-          recordsWithUsage: 1,
-        },
-        {
-          date: "2026-04-01",
-          sourceId: "",
-          modelId: "",
+          modelId: "gpt-5",
           inputTokens: 200,
           outputTokens: 100,
           cacheCreationTokens: 0,
@@ -606,141 +323,478 @@ describe("App", () => {
           recordsWithUsage: 1,
         },
       ],
-      hours: [
-        {
-          date: "2026-04-28 10:00",
-          sourceId: "",
-          modelId: "",
-          inputTokens: 100,
-          outputTokens: 50,
-          cacheCreationTokens: 0,
-          cacheReadTokens: 0,
-          cacheTokens: 0,
-          reasoningTokens: 0,
-          totalTokens: 150,
-          recordsWithUsage: 1,
-        },
-      ],
-      byModel: [
-        {
-          date: "",
-          sourceId: "claude_code",
-          modelId: "claude-sonnet-4",
-          inputTokens: 100,
-          outputTokens: 50,
-          cacheCreationTokens: 0,
-          cacheReadTokens: 0,
-          cacheTokens: 0,
-          reasoningTokens: 0,
-          totalTokens: 150,
-          recordsWithUsage: 1,
-        },
-        {
-          date: "",
-          sourceId: "codex",
-          modelId: "gpt-5.4-codex",
-          inputTokens: 200,
-          outputTokens: 100,
-          cacheCreationTokens: 0,
-          cacheReadTokens: 0,
-          cacheTokens: 0,
-          reasoningTokens: 0,
-          totalTokens: 300,
-          recordsWithUsage: 1,
-        },
-      ],
-      byModelByDay: [
-        {
-          date: "2026-04-28",
-          sourceId: "claude_code",
-          modelId: "claude-sonnet-4",
-          inputTokens: 100,
-          outputTokens: 50,
-          cacheCreationTokens: 0,
-          cacheReadTokens: 0,
-          cacheTokens: 0,
-          reasoningTokens: 0,
-          totalTokens: 150,
-          recordsWithUsage: 1,
-        },
-        {
-          date: "2026-04-01",
-          sourceId: "codex",
-          modelId: "gpt-5.4-codex",
-          inputTokens: 200,
-          outputTokens: 100,
-          cacheCreationTokens: 0,
-          cacheReadTokens: 0,
-          cacheTokens: 0,
-          reasoningTokens: 0,
-          totalTokens: 300,
-          recordsWithUsage: 1,
-        },
-      ],
-      byModelByHour: [
-        {
-          date: "2026-04-28 10:00",
-          sourceId: "claude_code",
-          modelId: "claude-sonnet-4",
-          inputTokens: 100,
-          outputTokens: 50,
-          cacheCreationTokens: 0,
-          cacheReadTokens: 0,
-          cacheTokens: 0,
-          reasoningTokens: 0,
-          totalTokens: 150,
-          recordsWithUsage: 1,
-        },
-      ],
+      hours: [],
+      byModelByHour: [],
       samples: [],
     });
 
     render(<App />);
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "◷ Token 探测" }));
+    await user.click(screen.getByRole("button", { name: "Token" }));
+    await screen.findByRole("button", { name: "Token" });
+    await user.click(screen.getAllByRole("button", { name: "全部" })[0]);
 
-    expect(await screen.findByText("Token Usage 探测")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Claude Code" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Codex" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "claude-sonnet-4" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "gpt-5.4-codex" })).not.toBeInTheDocument();
+    expect(await screen.findByText("2026-04-20")).toBeInTheDocument();
+    expect(screen.getByText("2026-01-01")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "最近 30 天" }));
 
-    expect(screen.getByRole("button", { name: "Claude Code" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Codex" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "claude-sonnet-4" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "gpt-5.4-codex" })).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Claude Code" }));
-
-    expect(screen.getByRole("button", { name: "claude-sonnet-4" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "gpt-5.4-codex" })).not.toBeInTheDocument();
+    expect(screen.getByText("2026-04-20")).toBeInTheDocument();
+    expect(screen.queryByText("2026-01-01")).not.toBeInTheDocument();
   });
 
-  it("filters token buckets by custom date range", () => {
-    const buckets = [
-      { ...createTokenBucket("2026-03-31"), totalTokens: 10 },
-      { ...createTokenBucket("2026-04-01"), totalTokens: 20 },
-      { ...createTokenBucket("2026-04-15"), totalTokens: 30 },
-      { ...createTokenBucket("2026-05-01"), totalTokens: 40 },
-    ];
+  it("uses an hourly line chart when token time range is under 24 hours", async () => {
+    const today = getBeijingDateForTest();
+    getTokenReportMock.mockResolvedValue({
+      filesScanned: 3,
+      recordsScanned: 20,
+      recordsWithUsage: 4,
+      days: [
+        {
+          date: today,
+          sourceId: "",
+          modelId: "",
+          inputTokens: 300,
+          outputTokens: 150,
+          cacheCreationTokens: 20,
+          cacheReadTokens: 30,
+          cacheTokens: 50,
+          reasoningTokens: 40,
+          totalTokens: 540,
+          recordsWithUsage: 2,
+        },
+      ],
+      byModel: [
+        {
+          date: "",
+          sourceId: "codex",
+          modelId: "gpt-5",
+          inputTokens: 300,
+          outputTokens: 150,
+          cacheCreationTokens: 20,
+          cacheReadTokens: 30,
+          cacheTokens: 50,
+          reasoningTokens: 40,
+          totalTokens: 540,
+          recordsWithUsage: 2,
+        },
+      ],
+      byModelByDay: [
+        {
+          date: today,
+          sourceId: "codex",
+          modelId: "gpt-5",
+          inputTokens: 300,
+          outputTokens: 150,
+          cacheCreationTokens: 20,
+          cacheReadTokens: 30,
+          cacheTokens: 50,
+          reasoningTokens: 40,
+          totalTokens: 540,
+          recordsWithUsage: 2,
+        },
+      ],
+      hours: [
+        {
+          date: `${today} 09:00`,
+          sourceId: "",
+          modelId: "",
+          inputTokens: 100,
+          outputTokens: 50,
+          cacheCreationTokens: 10,
+          cacheReadTokens: 10,
+          cacheTokens: 20,
+          reasoningTokens: 10,
+          totalTokens: 180,
+          recordsWithUsage: 1,
+        },
+        {
+          date: `${today} 10:00`,
+          sourceId: "",
+          modelId: "",
+          inputTokens: 200,
+          outputTokens: 100,
+          cacheCreationTokens: 10,
+          cacheReadTokens: 20,
+          cacheTokens: 30,
+          reasoningTokens: 30,
+          totalTokens: 360,
+          recordsWithUsage: 1,
+        },
+      ],
+      byModelByHour: [],
+      samples: [],
+    });
 
-    expect(filterBucketsByRange(buckets, "custom", {
-      startDate: "2026-04-01",
-      endDate: "2026-04-30",
-    }).map((bucket) => bucket.date)).toEqual(["2026-04-01", "2026-04-15"]);
+    render(<App />);
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Token" }));
+    await user.click(await screen.findByRole("button", { name: "今天" }));
+
+    expect(screen.getByLabelText("按小时 token 消耗曲线图")).toBeInTheDocument();
+    expect(screen.queryByLabelText("按天 token 消耗柱状图")).not.toBeInTheDocument();
+    expect(screen.getByText("按小时消耗")).toBeInTheDocument();
   });
 
-  it("filters token buckets to yesterday relative to the latest usage day", () => {
-    const buckets = [
-      { ...createTokenBucket("2026-04-26"), totalTokens: 10 },
-      { ...createTokenBucket("2026-04-27"), totalTokens: 20 },
-      { ...createTokenBucket("2026-04-28"), totalTokens: 30 },
-    ];
+  it("refreshes the loaded token report after a settings scan completes", async () => {
+    const today = getBeijingDateForTest();
+    const oldReport = {
+      filesScanned: 3,
+      recordsScanned: 20,
+      recordsWithUsage: 1,
+      days: [
+        {
+          date: today,
+          sourceId: "",
+          modelId: "",
+          inputTokens: 100,
+          outputTokens: 50,
+          cacheCreationTokens: 10,
+          cacheReadTokens: 10,
+          cacheTokens: 20,
+          reasoningTokens: 10,
+          totalTokens: 180,
+          recordsWithUsage: 1,
+        },
+      ],
+      byModel: [],
+      byModelByDay: [],
+      hours: [
+        {
+          date: `${today} 10:00`,
+          sourceId: "",
+          modelId: "",
+          inputTokens: 100,
+          outputTokens: 50,
+          cacheCreationTokens: 10,
+          cacheReadTokens: 10,
+          cacheTokens: 20,
+          reasoningTokens: 10,
+          totalTokens: 180,
+          recordsWithUsage: 1,
+        },
+      ],
+      byModelByHour: [],
+      samples: [],
+    };
+    const newReport = {
+      ...oldReport,
+      recordsScanned: 22,
+      recordsWithUsage: 2,
+      days: [
+        {
+          date: today,
+          sourceId: "",
+          modelId: "",
+          inputTokens: 300,
+          outputTokens: 150,
+          cacheCreationTokens: 20,
+          cacheReadTokens: 30,
+          cacheTokens: 50,
+          reasoningTokens: 40,
+          totalTokens: 540,
+          recordsWithUsage: 2,
+        },
+      ],
+      hours: [
+        ...oldReport.hours,
+        {
+          date: `${today} 11:00`,
+          sourceId: "",
+          modelId: "",
+          inputTokens: 200,
+          outputTokens: 100,
+          cacheCreationTokens: 10,
+          cacheReadTokens: 20,
+          cacheTokens: 30,
+          reasoningTokens: 30,
+          totalTokens: 360,
+          recordsWithUsage: 1,
+        },
+      ],
+    };
+    getTokenReportMock
+      .mockResolvedValueOnce(oldReport)
+      .mockResolvedValueOnce(newReport);
+    scanAllDataMock.mockResolvedValue({
+      sessionCount: 1,
+      messageCount: 3,
+      filesScanned: 1,
+      recordsScanned: 22,
+      recordsWithUsage: 2,
+      lastScannedAt: `${today}T11:25:00`,
+    });
 
-    expect(filterBucketsByRange(buckets, "yesterday").map((bucket) => bucket.date)).toEqual(["2026-04-27"]);
+    render(<App />);
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Token" }));
+    await user.click(await screen.findByRole("button", { name: "今天" }));
+
+    expect(await screen.findByText(`${today} 10:00`)).toBeInTheDocument();
+    expect(screen.queryByText(`${today} 11:00`)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "设置" }));
+    await user.click(screen.getByRole("button", { name: "扫描全部数据" }));
+
+    await waitFor(() => {
+      expect(getTokenReportMock).toHaveBeenCalledTimes(2);
+    });
+
+    await user.click(screen.getByRole("button", { name: "Token" }));
+
+    expect(await screen.findByText(`${today} 11:00`)).toBeInTheDocument();
+    expect(screen.getByText(/22\s*条记录/)).toBeInTheDocument();
+  });
+
+  it("switches to settings view", async () => {
+    render(<App />);
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "设置" }));
+
+    expect(screen.getByRole("heading", { name: "设置" })).toBeInTheDocument();
+  });
+
+  it("loads session detail on demand after scan selects a session", async () => {
+    const todayIso = new Date().toISOString();
+    listSessionsMock.mockResolvedValue([
+      {
+        id: "session:codex:abc",
+        sourceId: "codex",
+        title: "Codex: project-b",
+        updatedAt: todayIso,
+        projectName: "project-b",
+        projectPath: "/tmp/project-b",
+        messageCount: 2,
+        preview: "Open this session.",
+        fileSize: 0,
+        modelId: "",
+      },
+    ]);
+    getSessionDetailMock.mockResolvedValue({
+      id: "session:codex:abc",
+      sourceId: "codex",
+      title: "Codex: project-b",
+      updatedAt: "2026-04-27T10:00:00Z",
+      startedAt: "2026-04-27T09:55:00Z",
+      endedAt: "2026-04-27T10:00:00Z",
+      projectName: "project-b",
+      projectPath: "/tmp/project-b",
+      messageCount: 2,
+      preview: "Open this session.",
+      fileSize: 0,
+      modelId: "",
+      messages: [
+        {
+          id: "message:1",
+          role: "user",
+          kind: "message",
+          contentText: "Open this session.",
+          createdAt: "2026-04-27T09:56:00Z",
+          filePaths: [],
+        },
+      ],
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(getSessionDetailMock).toHaveBeenCalledWith("session:codex:abc");
+      expect(screen.getAllByText("/tmp/project-b").length).toBeGreaterThan(0);
+    });
+  });
+
+  it("reloads detail when the selected session is clicked again", async () => {
+    const todayIso = new Date().toISOString();
+    listSessionsMock.mockResolvedValue([
+      {
+        id: "session:codex:abc",
+        sourceId: "codex",
+        title: "Codex: project-b",
+        updatedAt: todayIso,
+        projectName: "project-b",
+        projectPath: "/tmp/project-b",
+        messageCount: 2,
+        preview: "Open this session.",
+        fileSize: 0,
+        modelId: "",
+      },
+    ]);
+    getSessionDetailMock
+      .mockResolvedValueOnce({
+        id: "session:codex:abc",
+        sourceId: "codex",
+        title: "Codex: project-b",
+        updatedAt: "2026-04-27T10:00:00Z",
+        startedAt: "2026-04-27T09:55:00Z",
+        endedAt: "2026-04-27T10:00:00Z",
+        projectName: "project-b",
+        projectPath: "/tmp/project-b",
+        messageCount: 2,
+        preview: "Open this session.",
+        fileSize: 0,
+        modelId: "",
+        messages: [
+          {
+            id: "message:old",
+            role: "user",
+            kind: "message",
+            contentText: "旧会话内容",
+            createdAt: "2026-04-27T09:56:00Z",
+            filePaths: [],
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        id: "session:codex:abc",
+        sourceId: "codex",
+        title: "Codex: project-b",
+        updatedAt: "2026-04-27T10:05:00Z",
+        startedAt: "2026-04-27T09:55:00Z",
+        endedAt: "2026-04-27T10:05:00Z",
+        projectName: "project-b",
+        projectPath: "/tmp/project-b",
+        messageCount: 3,
+        preview: "Open this session.",
+        fileSize: 0,
+        modelId: "",
+        messages: [
+          {
+            id: "message:new",
+            role: "assistant",
+            kind: "message",
+            contentText: "最新会话内容",
+            createdAt: "2026-04-27T10:05:00Z",
+            filePaths: [],
+          },
+        ],
+      });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("旧会话内容")).toBeInTheDocument();
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Codex: project-b" }));
+
+    await waitFor(() => {
+      expect(getSessionDetailMock).toHaveBeenCalledTimes(2);
+    });
+    expect(await screen.findByText("最新会话内容")).toBeInTheDocument();
+  });
+
+  it("refreshes sessions and selected detail after a settings scan completes", async () => {
+    const todayIso = new Date().toISOString();
+    listSessionsMock
+      .mockResolvedValueOnce([
+        {
+          id: "session:codex:abc",
+          sourceId: "codex",
+          title: "Codex: project-b",
+          updatedAt: todayIso,
+          projectName: "project-b",
+          projectPath: "/tmp/project-b",
+          messageCount: 2,
+          preview: "Old preview.",
+          fileSize: 0,
+          modelId: "",
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "session:codex:abc",
+          sourceId: "codex",
+          title: "Codex: project-b",
+          updatedAt: todayIso,
+          projectName: "project-b",
+          projectPath: "/tmp/project-b",
+          messageCount: 3,
+          preview: "New preview.",
+          fileSize: 0,
+          modelId: "",
+        },
+      ]);
+    getSessionDetailMock
+      .mockResolvedValueOnce({
+        id: "session:codex:abc",
+        sourceId: "codex",
+        title: "Codex: project-b",
+        updatedAt: "2026-04-27T10:00:00Z",
+        startedAt: "2026-04-27T09:55:00Z",
+        endedAt: "2026-04-27T10:00:00Z",
+        projectName: "project-b",
+        projectPath: "/tmp/project-b",
+        messageCount: 2,
+        preview: "Old preview.",
+        fileSize: 0,
+        modelId: "",
+        messages: [
+          {
+            id: "message:old",
+            role: "user",
+            kind: "message",
+            contentText: "扫描前的内容",
+            createdAt: "2026-04-27T09:56:00Z",
+            filePaths: [],
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        id: "session:codex:abc",
+        sourceId: "codex",
+        title: "Codex: project-b",
+        updatedAt: "2026-04-27T10:05:00Z",
+        startedAt: "2026-04-27T09:55:00Z",
+        endedAt: "2026-04-27T10:05:00Z",
+        projectName: "project-b",
+        projectPath: "/tmp/project-b",
+        messageCount: 3,
+        preview: "New preview.",
+        fileSize: 0,
+        modelId: "",
+        messages: [
+          {
+            id: "message:new",
+            role: "assistant",
+            kind: "message",
+            contentText: "扫描后的最新内容",
+            createdAt: "2026-04-27T10:05:00Z",
+            filePaths: [],
+          },
+        ],
+      });
+    scanAllDataMock.mockResolvedValue({
+      sessionCount: 1,
+      messageCount: 3,
+      filesScanned: 1,
+      recordsScanned: 1,
+      recordsWithUsage: 0,
+      lastScannedAt: "2026-05-08T10:00:00",
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("扫描前的内容")).toBeInTheDocument();
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "设置" }));
+    await user.click(screen.getByRole("button", { name: "扫描全部数据" }));
+
+    await waitFor(() => {
+      expect(listSessionsMock).toHaveBeenCalledTimes(2);
+      expect(getSessionDetailMock).toHaveBeenCalledTimes(2);
+    });
+
+    await user.click(screen.getByRole("button", { name: "会话" }));
+
+    expect(await screen.findByText("扫描后的最新内容")).toBeInTheDocument();
   });
 
   it("limits today's hourly series to the current hour and hides zero detail rows", () => {
@@ -859,166 +913,5 @@ describe("App", () => {
 
     expect(path).not.toContain("104");
     expect(path).toContain("C");
-  });
-
-  it("loads session detail on demand after scan selects a session", async () => {
-    scanSourcesMock.mockResolvedValue([
-      {
-        id: "session:codex:abc",
-        sourceId: "codex",
-        title: "Codex: project-b",
-        updatedAt: "2026-04-27T10:00:00Z",
-        projectName: "project-b",
-        projectPath: "/tmp/project-b",
-        messageCount: 2,
-        preview: "Open this session.",
-        fileSize: 0,
-        modelId: "",
-      },
-    ]);
-    getSessionDetailMock.mockResolvedValue({
-      id: "session:codex:abc",
-      sourceId: "codex",
-      title: "Codex: project-b",
-      updatedAt: "2026-04-27T10:00:00Z",
-      startedAt: "2026-04-27T09:55:00Z",
-      endedAt: "2026-04-27T10:00:00Z",
-      projectName: "project-b",
-      projectPath: "/tmp/project-b",
-      messageCount: 2,
-      preview: "Open this session.",
-      fileSize: 0,
-      modelId: "",
-      messages: [
-        {
-          id: "message:1",
-          role: "user",
-          kind: "message",
-          contentText: "Open this session.",
-          createdAt: "2026-04-27T09:56:00Z",
-          filePaths: [],
-        },
-      ],
-    });
-
-    render(<App />);
-
-    expect(await screen.findByRole("button", { name: "Codex: project-b" })).toBeInTheDocument();
-
-    await waitFor(() => {
-      expect(getSessionDetailMock).toHaveBeenCalledWith("session:codex:abc");
-      expect(screen.getAllByText("/tmp/project-b").length).toBeGreaterThan(0);
-    });
-  });
-
-  it("shows a loading transition overlay while switching sessions", async () => {
-    const secondDetailDeferred = createDeferred<Awaited<ReturnType<typeof getSessionDetail>>>();
-
-    scanSourcesMock.mockResolvedValue([
-      {
-        id: "session:codex:aaa",
-        sourceId: "codex",
-        title: "Codex: project-a",
-        updatedAt: "2026-04-27T10:00:00Z",
-        projectName: "project-a",
-        projectPath: "/tmp/project-a",
-        messageCount: 2,
-        preview: "First session.",
-        fileSize: 0,
-        modelId: "",
-      },
-      {
-        id: "session:codex:bbb",
-        sourceId: "codex",
-        title: "Codex: project-b",
-        updatedAt: "2026-04-27T11:00:00Z",
-        projectName: "project-b",
-        projectPath: "/tmp/project-b",
-        messageCount: 2,
-        preview: "Second session.",
-        fileSize: 0,
-        modelId: "",
-      },
-    ]);
-
-    getSessionDetailMock.mockImplementation((id) => {
-      if (id === "session:codex:aaa") {
-        return Promise.resolve({
-          id: "session:codex:aaa",
-          sourceId: "codex",
-          title: "Codex: project-a",
-          updatedAt: "2026-04-27T10:00:00Z",
-          startedAt: "2026-04-27T09:55:00Z",
-          endedAt: "2026-04-27T10:00:00Z",
-          projectName: "project-a",
-          projectPath: "/tmp/project-a",
-          messageCount: 1,
-          preview: "First session.",
-          fileSize: 0,
-          modelId: "",
-          messages: [
-            {
-              id: "message:a",
-              role: "user",
-              kind: "message",
-              contentText: "First session.",
-              createdAt: "2026-04-27T09:56:00Z",
-              filePaths: [],
-            },
-          ],
-        });
-      }
-
-      return secondDetailDeferred.promise;
-    });
-
-    render(<App />);
-
-    expect((await screen.findAllByText("/tmp/project-a")).length).toBeGreaterThan(0);
-
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Codex: project-b" }));
-
-    expect(screen.getByRole("button", { name: "Codex: project-b" })).toHaveAttribute("aria-current", "true");
-    expect(screen.getByRole("button", { name: "Codex: project-a" })).not.toHaveAttribute("aria-current");
-
-    const loadingStatus = screen.getByRole("status", { name: "Loading session detail" });
-    expect(loadingStatus).toBeInTheDocument();
-    expect(within(loadingStatus).getAllByText("project-b").length).toBeGreaterThan(0);
-    expect(within(loadingStatus).getByText("Codex")).toBeInTheDocument();
-    expect(screen.getAllByText("/tmp/project-a").length).toBeGreaterThan(0);
-
-    secondDetailDeferred.resolve({
-      id: "session:codex:bbb",
-      sourceId: "codex",
-      title: "Codex: project-b",
-      updatedAt: "2026-04-27T11:00:00Z",
-      startedAt: "2026-04-27T10:55:00Z",
-      endedAt: "2026-04-27T11:00:00Z",
-      projectName: "project-b",
-      projectPath: "/tmp/project-b",
-      messageCount: 1,
-      preview: "Second session.",
-      fileSize: 0,
-      modelId: "",
-      messages: [
-        {
-          id: "message:b",
-          role: "assistant",
-          kind: "message",
-          contentText: "Second session ready.",
-          createdAt: "2026-04-27T10:56:00Z",
-          filePaths: [],
-        },
-      ],
-    });
-
-    await waitFor(() => {
-      expect(screen.getAllByText("/tmp/project-b").length).toBeGreaterThan(0);
-    });
-
-    await waitFor(() => {
-      expect(screen.queryByRole("status", { name: "Loading session detail" })).not.toBeInTheDocument();
-    });
   });
 });

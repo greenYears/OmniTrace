@@ -1,11 +1,21 @@
-export type TimeRange = "today" | "yesterday" | "all" | "7d" | "30d" | "custom";
+export type SourceFilter = "all" | "claude_code" | "codex";
 
-export type CustomDateRange = {
-  startDate: string;
-  endDate: string;
+export type TimeRange = "today" | "yesterday" | "7d" | "30d" | "all";
+
+export type ScanAllResult = {
+  sessionCount: number;
+  messageCount: number;
+  lastScannedAt: string;
+  filesScanned: number;
+  recordsScanned: number;
+  recordsWithUsage: number;
 };
 
-export type SourceFilter = "all" | "claude_code" | "codex";
+export type ScanStats = {
+  sessionCount: number;
+  messageCount: number;
+  lastScannedAt: string | null;
+};
 
 export type SessionListItem = {
   id: string;

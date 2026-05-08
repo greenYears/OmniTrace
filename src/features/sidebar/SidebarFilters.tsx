@@ -1,4 +1,5 @@
 import clsx from "clsx";
+import { Check, Copy } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import type { SourceFilter } from "../../types/session";
@@ -16,6 +17,7 @@ type SidebarFiltersProps = {
 
 export type ProjectFilterOption = {
   name: string;
+  value?: string;
   path?: string;
 };
 
@@ -102,13 +104,14 @@ function ProjectFilterGroup({
       <h2 className="sidebar-filters-title">项目</h2>
       <div className="sidebar-filter-list">
         {projects.map((item) => {
-          const isSelected = value === item.name;
-          const isCopied = copiedProject === item.name;
+          const itemValue = item.value ?? item.name;
+          const isSelected = value === itemValue;
+          const isCopied = copiedProject === itemValue;
           const label = item.name === "all" ? "全部" : item.name;
 
           return (
             <div
-              key={`${item.name}:${item.path ?? ""}`}
+              key={itemValue}
               role="button"
               tabIndex={0}
               className={clsx(
@@ -117,49 +120,54 @@ function ProjectFilterGroup({
                 isSelected && "is-selected",
                 isCopied && "is-copied",
               )}
-              onClick={() => onSelect(item.name)}
+              onClick={() => onSelect(itemValue)}
               onKeyDown={(event) => {
                 if (event.key === "Enter" || event.key === " ") {
                   event.preventDefault();
-                  onSelect(item.name);
+                  onSelect(itemValue);
                 }
               }}
             >
               <span className="sidebar-project-name">{label}</span>
               {item.path && (
-                <button
-                  type="button"
-                  className="sidebar-project-path"
-                  title={item.path}
-                  aria-label={isCopied ? `已复制路径 ${item.path}` : `复制路径 ${item.path}`}
-                  onClick={async (event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    await copyText(item.path!);
-                    setCopiedProject(item.name);
+                <span className="sidebar-project-meta">
+                  <span className="sidebar-project-path" title={item.path}>
+                    {formatProjectPath(item.path)}
+                  </span>
+                  <button
+                    type="button"
+                    className="sidebar-project-copy-button"
+                    title={isCopied ? "已复制" : "复制路径"}
+                    aria-label={isCopied ? `已复制路径 ${item.path}` : `复制路径 ${item.path}`}
+                    onClick={async (event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      await copyText(item.path!);
+                      setCopiedProject(itemValue);
 
-                    if (copiedTimerRef.current) {
-                      window.clearTimeout(copiedTimerRef.current);
-                    }
+                      if (copiedTimerRef.current) {
+                        window.clearTimeout(copiedTimerRef.current);
+                      }
 
-                    copiedTimerRef.current = window.setTimeout(() => {
-                      setCopiedProject((current) => (current === item.name ? null : current));
-                      copiedTimerRef.current = null;
-                    }, COPY_FEEDBACK_MS);
-                  }}
-                  onKeyDown={async (event) => {
-                    if (event.key !== "Enter" && event.key !== " ") {
-                      return;
-                    }
+                      copiedTimerRef.current = window.setTimeout(() => {
+                        setCopiedProject((current) => (current === itemValue ? null : current));
+                        copiedTimerRef.current = null;
+                      }, COPY_FEEDBACK_MS);
+                    }}
+                    onKeyDown={async (event) => {
+                      if (event.key !== "Enter" && event.key !== " ") {
+                        return;
+                      }
 
-                    event.preventDefault();
-                    event.stopPropagation();
-                    await copyText(item.path!);
-                    setCopiedProject(item.name);
-                  }}
-                >
-                  {formatProjectPath(item.path)}
-                </button>
+                      event.preventDefault();
+                      event.stopPropagation();
+                      await copyText(item.path!);
+                      setCopiedProject(itemValue);
+                    }}
+                  >
+                    {isCopied ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
+                  </button>
+                </span>
               )}
             </div>
           );
@@ -188,7 +196,9 @@ export function SidebarFilters({
       <ProjectFilterGroup
         projects={projects}
         value={project}
-        onSelect={(value) => onChange({ projectFilter: value })}
+        onSelect={(value) => {
+          onChange(value === "all" ? { projectFilter: value } : { sourceFilter: "all", projectFilter: value });
+        }}
       />
     </aside>
   );

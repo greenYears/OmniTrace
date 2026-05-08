@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import type {
+  ScanAllResult,
+  ScanStats,
   SessionDetail,
   SessionListItem,
   SessionMessage,
@@ -74,6 +76,21 @@ type TokenUsageProbeReportDto = {
   samples: TokenUsageSampleDto[];
 };
 
+type ScanAllResultDto = {
+  session_count: number;
+  message_count: number;
+  last_scanned_at: string;
+  files_scanned: number;
+  records_scanned: number;
+  records_with_usage: number;
+};
+
+type ScanStatsDto = {
+  session_count: number;
+  message_count: number;
+  last_scanned_at: string | null;
+};
+
 function mapMessageRole(role: string): SessionMessage["role"] {
   if (role === "user" || role === "assistant" || role === "system" || role === "tool") {
     return role;
@@ -98,10 +115,8 @@ function mapMessageKind(kind: string): SessionMessage["kind"] {
   return "message";
 }
 
-export async function scanSources(timeRange: string): Promise<SessionListItem[]> {
-  const sessions = await invoke<SessionListItemDto[]>("scan_sources", { timeRange });
-
-  return sessions.map((session) => ({
+function mapSessionListItem(session: SessionListItemDto): SessionListItem {
+  return {
     id: session.id,
     resumeId: session.resume_id,
     sourceId: session.source_id,
@@ -113,7 +128,24 @@ export async function scanSources(timeRange: string): Promise<SessionListItem[]>
     preview: session.preview,
     fileSize: session.file_size,
     modelId: session.model_id,
-  }));
+  };
+}
+
+export async function listSessions(): Promise<SessionListItem[]> {
+  const sessions = await invoke<SessionListItemDto[]>("list_sessions");
+  return sessions.map(mapSessionListItem);
+}
+
+export async function scanAllData(): Promise<ScanAllResult> {
+  const result = await invoke<ScanAllResultDto>("scan_all_data");
+  return {
+    sessionCount: result.session_count,
+    messageCount: result.message_count,
+    lastScannedAt: result.last_scanned_at,
+    filesScanned: result.files_scanned,
+    recordsScanned: result.records_scanned,
+    recordsWithUsage: result.records_with_usage,
+  };
 }
 
 export async function getSessionDetail(id: string): Promise<SessionDetail | null> {
@@ -149,6 +181,23 @@ export async function getSessionDetail(id: string): Promise<SessionDetail | null
   };
 }
 
+export async function getTokenReport(): Promise<TokenUsageProbeReport | null> {
+  const report = await invoke<TokenUsageProbeReportDto | null>("get_token_report");
+  if (!report) {
+    return null;
+  }
+  return mapTokenUsageReport(report);
+}
+
+export async function getScanStats(): Promise<ScanStats> {
+  const stats = await invoke<ScanStatsDto>("get_scan_stats");
+  return {
+    sessionCount: stats.session_count,
+    messageCount: stats.message_count,
+    lastScannedAt: stats.last_scanned_at,
+  };
+}
+
 export async function deleteSession(id: string): Promise<void> {
   await invoke("delete_session", { id });
 }
@@ -179,9 +228,7 @@ function mapTokenUsageSample(sample: TokenUsageSampleDto): TokenUsageSample {
   };
 }
 
-export async function probeTokenUsageSources(): Promise<TokenUsageProbeReport> {
-  const report = await invoke<TokenUsageProbeReportDto>("probe_token_usage_sources");
-
+function mapTokenUsageReport(report: TokenUsageProbeReportDto): TokenUsageProbeReport {
   return {
     filesScanned: report.files_scanned,
     recordsScanned: report.records_scanned,
