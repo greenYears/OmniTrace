@@ -12,8 +12,9 @@ Currently supported:
 
 - `Claude Code` history sessions
 - `Codex` history sessions
-- Filtering by project, source, and time range
+- Filtering by project, source, and time range (including custom date ranges)
 - Viewing user messages, AI replies, tool calls, and file information
+- Token usage statistics (by source, model, and time dimensions)
 - Copying resume commands to continue sessions in the original TUI tools
 
 ## Features
@@ -21,6 +22,8 @@ Currently supported:
 - **Unified history view**: Browse Claude Code and Codex local histories in one app.
 - **Three-pane layout**: Projects and filters on the left, sessions in the middle, details on the right.
 - **TUI-inspired interface**: A dark terminal-like UI for reading long transcripts and tool calls.
+- **Token usage statistics**: Analyze token consumption by source, model, and time with bar and line charts.
+- **Custom date ranges**: Calendar panel for selecting arbitrary start and end dates.
 - **Project path management**: Project paths are shown under project items, shortened with `~`, and can be clicked to copy the full path.
 - **Resume command copy**: Session cards can copy `claude --resume <id>` or `codex resume <id>`.
 - **Real history scanning**: Reads local `~/.claude` and `~/.codex` history directories.
@@ -48,8 +51,8 @@ Backend:
 
 OmniTrace uses a layered architecture: React for presentation, Rust for scanning and persistence.
 
-- `src/`: React frontend.
-- `src-tauri/src/commands.rs`: Tauri command entry points, including `scan_sources` and `get_session_detail`.
+- `src/`: React frontend for layout, filtering, session display, and token statistics.
+- `src-tauri/src/commands.rs`: Tauri command entry points, including `scan_all_data`, `list_sessions`, `get_session_detail`, `get_token_report`, etc.
 - `src-tauri/src/ingest/`: Scans local history directories and aggregates sessions.
 - `src-tauri/src/adapters/`: Parses Claude Code and Codex history formats.
 - `src-tauri/src/db/`: SQLite schema, queries, and upserts.
@@ -57,8 +60,8 @@ OmniTrace uses a layered architecture: React for presentation, Rust for scanning
 
 Data flow:
 
-1. The frontend calls `scan_sources` on startup.
-2. Rust scans local history directories.
+1. On startup, the frontend loads previously scanned sessions from SQLite.
+2. Users trigger a scan from the Settings page; Rust scans local history directories.
 3. Raw records are normalized into unified session and message models.
 4. Data is written to SQLite.
 5. The frontend renders the session list and loads details through `get_session_detail`.
@@ -68,7 +71,7 @@ Data flow:
 By default, OmniTrace reads history files under the current user's `HOME` directory:
 
 - `~/.claude/history.jsonl`
-- `~/.claude/sessions/*.json`
+- `~/.claude/projects/*/sessions/*.json`
 - `~/.codex/history.jsonl`
 - `~/.codex/session_index.jsonl`
 
@@ -94,7 +97,7 @@ Run the desktop app:
 pnpm tauri dev
 ```
 
-The app scans local history records on startup. The `Scan` button can be used to rescan manually.
+The app loads previously scanned sessions on startup. Scanning can be triggered manually from the Settings page.
 
 Use a custom HOME directory for debugging:
 
@@ -142,12 +145,15 @@ OmniTrace/
 │   ├── features/layout/    # Three-pane layout
 │   ├── features/sidebar/   # Filters and project list
 │   ├── features/sessions/  # Session list and detail view
+│   ├── features/settings/  # Settings and scanning
+│   ├── features/timeRange/ # Time range and custom date picker
 │   ├── lib/                # Tauri call wrappers
 │   └── types/              # Frontend DTO types
 ├── src-tauri/              # Tauri + Rust backend
 │   └── src/
 │       ├── adapters/       # History format adapters
 │       ├── db/             # SQLite storage
+│       ├── domain/         # Domain models
 │       ├── ingest/         # Scanning and aggregation
 │       └── commands.rs     # Tauri commands
 └── docs/agents/            # Agent collaboration docs
@@ -167,10 +173,12 @@ Implemented:
 
 - Real history scanning
 - Unified Claude Code / Codex session display
-- Source / project / time filtering
+- Source / project / time filtering (including custom date ranges)
 - AI replies, tool calls, and file information in details
+- Token usage statistics (by source, model, and time dimensions)
 - Resume command copying
 - Project path display and copy
+- Settings page with scan progress
 
 Not implemented yet:
 
@@ -178,4 +186,3 @@ Not implemented yet:
 - Session tags and AI summaries
 - Real-time history watching
 - Windows / Linux compatibility
-- Improved persistent database strategy
