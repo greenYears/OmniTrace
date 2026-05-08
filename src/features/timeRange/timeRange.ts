@@ -1,6 +1,6 @@
-import type { TimeRange } from "../../types/session";
+import type { CustomDateRange, TimeRange } from "../../types/session";
 
-function getBeijingDate(date: Date): string {
+export function getBeijingDate(date: Date): string {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "Asia/Shanghai",
     year: "numeric",
@@ -17,9 +17,18 @@ function addDays(date: Date, days: number): Date {
   return next;
 }
 
-function dateRangeBounds(range: TimeRange, now = new Date()) {
+function dateRangeBounds(
+  range: TimeRange,
+  now = new Date(),
+  customRange?: CustomDateRange,
+) {
   if (range === "all") {
     return null;
+  }
+
+  if (range === "custom") {
+    if (!customRange) return null;
+    return { start: customRange.start, end: customRange.end };
   }
 
   const today = getBeijingDate(now);
@@ -40,8 +49,13 @@ function dateRangeBounds(range: TimeRange, now = new Date()) {
   };
 }
 
-export function isDateInTimeRange(date: string, range: TimeRange, now = new Date()) {
-  const bounds = dateRangeBounds(range, now);
+export function isDateInTimeRange(
+  date: string,
+  range: TimeRange,
+  now = new Date(),
+  customRange?: CustomDateRange,
+) {
+  const bounds = dateRangeBounds(range, now, customRange);
   if (!bounds) {
     return true;
   }
@@ -49,11 +63,16 @@ export function isDateInTimeRange(date: string, range: TimeRange, now = new Date
   return date >= bounds.start && date <= bounds.end;
 }
 
-export function isIsoInTimeRange(iso: string, range: TimeRange, now = new Date()) {
+export function isIsoInTimeRange(
+  iso: string,
+  range: TimeRange,
+  now = new Date(),
+  customRange?: CustomDateRange,
+) {
   const parsed = new Date(iso);
   if (Number.isNaN(parsed.getTime())) {
     return false;
   }
 
-  return isDateInTimeRange(getBeijingDate(parsed), range, now);
+  return isDateInTimeRange(getBeijingDate(parsed), range, now, customRange);
 }

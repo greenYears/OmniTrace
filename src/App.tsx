@@ -10,6 +10,7 @@ import { deleteSession, getSessionDetail, getTokenReport, listSessions } from ".
 import { handleWindowDragPointerDown } from "./lib/windowDrag";
 import { useSessionStore } from "./stores/useSessionStore";
 import type {
+  CustomDateRange,
   TimeRange,
   TokenUsageBucket,
   TokenUsageProbeReport,
@@ -73,7 +74,7 @@ function getHourlySeriesEndHour(day: string, now = new Date()) {
   return day === current.date && !Number.isNaN(current.hour) ? current.hour : 23;
 }
 
-function getHourlyChartDay(timeRange: TimeRange, now = new Date()) {
+function getHourlyChartDay(timeRange: TimeRange, now = new Date(), customRange?: CustomDateRange) {
   if (timeRange === "today") {
     return getBeijingDateTimeParts(now).date;
   }
@@ -82,6 +83,10 @@ function getHourlyChartDay(timeRange: TimeRange, now = new Date()) {
     const yesterday = new Date(now);
     yesterday.setUTCDate(yesterday.getUTCDate() - 1);
     return getBeijingDateTimeParts(yesterday).date;
+  }
+
+  if (timeRange === "custom" && customRange && customRange.start === customRange.end) {
+    return customRange.start;
   }
 
   return null;
@@ -345,12 +350,12 @@ function formatTokenTooltip(bucket: TokenUsageBucket) {
   ].join("\n");
 }
 
-function TokenUsageSummary({ report, timeRange }: { report: TokenUsageProbeReport; timeRange: TimeRange }) {
+function TokenUsageSummary({ report, timeRange, customRange }: { report: TokenUsageProbeReport; timeRange: TimeRange; customRange?: CustomDateRange }) {
   const [sourceFilter, setSourceFilter] = useState<TokenUsageSourceFilter>("all");
   const [modelFilter, setModelFilter] = useState("all");
   const [activeHourlyIndex, setActiveHourlyIndex] = useState<number | null>(null);
-  const filteredDays = report.days.filter((bucket) => isDateInTimeRange(bucket.date, timeRange));
-  const filteredModelDayBuckets = report.byModelByDay.filter((bucket) => isDateInTimeRange(bucket.date, timeRange));
+  const filteredDays = report.days.filter((bucket) => isDateInTimeRange(bucket.date, timeRange, new Date(), customRange));
+  const filteredModelDayBuckets = report.byModelByDay.filter((bucket) => isDateInTimeRange(bucket.date, timeRange, new Date(), customRange));
   const baseModelBuckets = timeRange === "all"
     ? aggregateModelBuckets(report.byModel)
     : aggregateModelBuckets(filteredModelDayBuckets);
@@ -358,7 +363,7 @@ function TokenUsageSummary({ report, timeRange }: { report: TokenUsageProbeRepor
   const dailyChartBuckets = sourceFilter === "all" && modelFilter === "all"
     ? filteredDays
     : aggregateBucketsByDate(filteredModelBuckets);
-  const hourlyDay = getHourlyChartDay(timeRange);
+  const hourlyDay = getHourlyChartDay(timeRange, new Date(), customRange);
   const isHourly = Boolean(hourlyDay);
   const hourlySourceBuckets = hourlyDay
     ? sourceFilter === "all" && modelFilter === "all"
@@ -666,11 +671,13 @@ function TokenUsageSummary({ report, timeRange }: { report: TokenUsageProbeRepor
 function TokenUsageView({
   report,
   timeRange,
+  customRange,
   onTimeRangeChange,
 }: {
   report: TokenUsageProbeReport | null;
   timeRange: TimeRange;
-  onTimeRangeChange: (timeRange: TimeRange) => void;
+  customRange?: CustomDateRange;
+  onTimeRangeChange: (timeRange: TimeRange, customRange?: CustomDateRange) => void;
 }) {
   if (!report) {
     return (
@@ -681,7 +688,7 @@ function TokenUsageView({
           </div>
         </header>
         <div className="time-range-toolbar-row" data-tauri-drag-region onPointerDown={handleWindowDragPointerDown}>
-          <TimeRangeToolbar value={timeRange} onChange={onTimeRangeChange} />
+          <TimeRangeToolbar value={timeRange} customRange={customRange} onChange={onTimeRangeChange} />
         </div>
         <div className="token-probe-panel">
           <p className="token-probe-empty">暂无 Token 数据，请在设置中扫描</p>
@@ -698,10 +705,10 @@ function TokenUsageView({
         </div>
       </header>
       <div className="time-range-toolbar-row" data-tauri-drag-region onPointerDown={handleWindowDragPointerDown}>
-        <TimeRangeToolbar value={timeRange} onChange={onTimeRangeChange} />
+        <TimeRangeToolbar value={timeRange} customRange={customRange} onChange={onTimeRangeChange} />
       </div>
       <div className="token-probe-panel">
-        <TokenUsageSummary report={report} timeRange={timeRange} />
+        <TokenUsageSummary report={report} timeRange={timeRange} customRange={customRange} />
       </div>
     </section>
   );
@@ -725,6 +732,18 @@ function App() {
   const [tokenReport, setTokenReport] = useState<TokenUsageProbeReport | null>(null);
   const [sessionTimeRange, setSessionTimeRange] = useState<TimeRange>("today");
   const [tokenTimeRange, setTokenTimeRange] = useState<TimeRange>("today");
+  const [sessionCustomRange, setSessionCustomRange] = useState<CustomDateRange | undefined>();
+  const [tokenCustomRange, setTokenCustomRange] = useState<CustomDateRange | undefined>();
+
+  function handleSessionTimeRangeChange(range: TimeRange, customRange?: CustomDateRange) {
+    setSessionTimeRange(range);
+    setSessionCustomRange(range === "custom" ? customRange : undefined);
+  }
+
+  function handleTokenTimeRangeChange(range: TimeRange, customRange?: CustomDateRange) {
+    setTokenTimeRange(range);
+    setTokenCustomRange(range === "custom" ? customRange : undefined);
+  }
 
   async function handleDelete(id: string) {
     try {
@@ -829,7 +848,8 @@ function App() {
             <TokenUsageView
               report={tokenReport}
               timeRange={tokenTimeRange}
-              onTimeRangeChange={setTokenTimeRange}
+              customRange={tokenCustomRange}
+              onTimeRangeChange={handleTokenTimeRangeChange}
             />
           ) : (
             <ThreePaneShell
@@ -840,8 +860,9 @@ function App() {
               sourceFilter={sourceFilter}
               projectFilter={projectFilter}
               timeRange={sessionTimeRange}
+              customRange={sessionCustomRange}
               onFilterChange={handleSessionFilterChange}
-              onTimeRangeChange={setSessionTimeRange}
+              onTimeRangeChange={handleSessionTimeRangeChange}
               onSelect={selectSession}
               onDelete={handleDelete}
             />

@@ -1,4 +1,7 @@
-import type { TimeRange } from "../../types/session";
+import { useRef, useState } from "react";
+
+import type { CustomDateRange, TimeRange } from "../../types/session";
+import { CalendarRangePicker } from "./CalendarRangePicker";
 
 type TimeRangeOption = {
   value: TimeRange;
@@ -11,26 +14,58 @@ const options: TimeRangeOption[] = [
   { value: "7d", label: "最近 7 天" },
   { value: "30d", label: "最近 30 天" },
   { value: "all", label: "全部" },
+  { value: "custom", label: "自定义" },
 ];
 
 type TimeRangeToolbarProps = {
   value: TimeRange;
-  onChange: (value: TimeRange) => void;
+  customRange?: CustomDateRange;
+  onChange: (value: TimeRange, customRange?: CustomDateRange) => void;
 };
 
-export function TimeRangeToolbar({ value, onChange }: TimeRangeToolbarProps) {
+export function TimeRangeToolbar({ value, customRange, onChange }: TimeRangeToolbarProps) {
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+
+  function handleClick(optionValue: TimeRange) {
+    if (optionValue === "custom") {
+      setCalendarOpen((prev) => !prev);
+      return;
+    }
+    setCalendarOpen(false);
+    onChange(optionValue);
+  }
+
+  function handleConfirm(range: { start: string; end: string }) {
+    setCalendarOpen(false);
+    onChange("custom", range);
+  }
+
+  function handleDismiss() {
+    setCalendarOpen(false);
+  }
+
   return (
-    <div className="time-range-toolbar" aria-label="时间范围">
+    <div className="time-range-toolbar" ref={toolbarRef} aria-label="时间范围">
       {options.map((option) => (
         <button
           key={option.value}
           className={`time-range-button${value === option.value ? " is-selected" : ""}`}
           type="button"
-          onClick={() => onChange(option.value)}
+          onClick={() => handleClick(option.value)}
         >
           {option.label}
         </button>
       ))}
+      {calendarOpen && (
+        <CalendarRangePicker
+          anchorRef={toolbarRef}
+          startDate={value === "custom" && customRange ? customRange.start : null}
+          endDate={value === "custom" && customRange ? customRange.end : null}
+          onConfirm={handleConfirm}
+          onDismiss={handleDismiss}
+        />
+      )}
     </div>
   );
 }

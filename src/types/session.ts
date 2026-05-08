@@ -1,6 +1,11 @@
 export type SourceFilter = "all" | "claude_code" | "codex";
 
-export type TimeRange = "today" | "yesterday" | "7d" | "30d" | "all";
+export type TimeRange = "today" | "yesterday" | "7d" | "30d" | "all" | "custom";
+
+export type CustomDateRange = {
+  start: string;
+  end: string;
+};
 
 export type ScanAllResult = {
   sessionCount: number;

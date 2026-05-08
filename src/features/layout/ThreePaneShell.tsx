@@ -5,6 +5,7 @@ import { TimeRangeToolbar } from "../timeRange/TimeRangeToolbar";
 import { isIsoInTimeRange } from "../timeRange/timeRange";
 import { SidebarFilters, type ProjectFilterOption } from "../sidebar/SidebarFilters";
 import type {
+  CustomDateRange,
   SessionDetail,
   SessionListItem,
   SourceFilter,
@@ -21,11 +22,12 @@ type ThreePaneShellProps = {
   sourceFilter: SourceFilter;
   projectFilter: string;
   timeRange: TimeRange;
+  customRange?: CustomDateRange;
   onFilterChange: (next: {
     sourceFilter?: SourceFilter;
     projectFilter?: string;
   }) => void;
-  onTimeRangeChange: (timeRange: TimeRange) => void;
+  onTimeRangeChange: (timeRange: TimeRange, customRange?: CustomDateRange) => void;
   onSelect: (id: string) => void;
   onDelete: (id: string) => void;
 };
@@ -38,12 +40,13 @@ export function ThreePaneShell({
   sourceFilter,
   projectFilter,
   timeRange,
+  customRange,
   onFilterChange,
   onTimeRangeChange,
   onSelect,
   onDelete,
 }: ThreePaneShellProps) {
-  const timeScopedSessions = sessions.filter((session) => isIsoInTimeRange(session.updatedAt, timeRange));
+  const timeScopedSessions = sessions.filter((session) => isIsoInTimeRange(session.updatedAt, timeRange, new Date(), customRange));
   const sourceOptions = (["all", "claude_code", "codex"] as SourceFilter[]).filter(
     (sourceId) => sourceId === "all" || timeScopedSessions.some((session) => session.sourceId === sourceId),
   );
@@ -107,7 +110,7 @@ export function ThreePaneShell({
         </div>
       </header>
       <div className="time-range-toolbar-row" data-tauri-drag-region onPointerDown={handleWindowDragPointerDown}>
-        <TimeRangeToolbar value={timeRange} onChange={onTimeRangeChange} />
+        <TimeRangeToolbar value={timeRange} customRange={customRange} onChange={onTimeRangeChange} />
       </div>
 
       <SidebarFilters
