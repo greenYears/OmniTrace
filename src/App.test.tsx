@@ -85,6 +85,7 @@ describe("App", () => {
       projectFilter: "all",
       detailRefreshKey: 0,
     });
+    localStorage.setItem("omnitrace-auto-scan", "false");
     listSessionsMock.mockResolvedValue([]);
     getSessionDetailMock.mockResolvedValue(null);
     getTokenReportMock.mockResolvedValue(null);

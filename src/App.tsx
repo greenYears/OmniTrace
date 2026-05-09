@@ -2,6 +2,7 @@ import "./styles.css";
 import { startTransition, useEffect, useRef, useState } from "react";
 
 import { SettingsView } from "./features/settings/SettingsView";
+import { StartupScanView } from "./features/scanning/StartupScanView";
 import { ThreePaneShell } from "./features/layout/ThreePaneShell";
 import { AppSidebar } from "./features/sidebar/AppSidebar";
 import { TimeRangeToolbar } from "./features/timeRange/TimeRangeToolbar";
@@ -729,6 +730,9 @@ function App() {
   const selectSession = useSessionStore((s) => s.selectSession);
   const hasLoadedSessions = useRef(false);
   const [activeView, setActiveView] = useState<AppView>("sessions");
+  const [bootState, setBootState] = useState<"booting" | "ready">(() =>
+    localStorage.getItem("omnitrace-auto-scan") === "false" ? "ready" : "booting",
+  );
   const [tokenReport, setTokenReport] = useState<TokenUsageProbeReport | null>(null);
   const [sessionTimeRange, setSessionTimeRange] = useState<TimeRange>("today");
   const [tokenTimeRange, setTokenTimeRange] = useState<TimeRange>("today");
@@ -770,6 +774,15 @@ function App() {
       refreshSessions(),
       refreshTokenReport(),
     ]);
+  }
+
+  async function handleStartupScanComplete() {
+    await handleScanComplete();
+    setBootState("ready");
+  }
+
+  function handleStartupScanSkip() {
+    setBootState("ready");
   }
 
   function handleSessionFilterChange(next: {
@@ -836,6 +849,21 @@ function App() {
       cancelled = true;
     };
   }, [selectedId, detailRefreshKey, setDetail, setDetailLoading]);
+
+  if (bootState === "booting") {
+    return (
+      <main className="app-shell">
+        <div className="app-main">
+          <div className="viewer-shell">
+            <StartupScanView
+              onComplete={() => void handleStartupScanComplete()}
+              onSkip={handleStartupScanSkip}
+            />
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="app-shell">

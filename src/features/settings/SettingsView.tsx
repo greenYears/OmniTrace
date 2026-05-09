@@ -47,6 +47,7 @@ export function SettingsView({ onScanComplete }: SettingsViewProps) {
   const [tokenProgress, setTokenProgress] = useState<TokenProbeProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [autoScan, setAutoScan] = useState(() => localStorage.getItem("omnitrace-auto-scan") !== "false");
 
   useEffect(() => {
     let cancelled = false;
@@ -184,6 +185,24 @@ export function SettingsView({ onScanComplete }: SettingsViewProps) {
               </div>
             </div>
           ) : null}
+        </div>
+
+        <div className="settings-section">
+          <h3>启动设置</h3>
+          <div className="settings-toggle-row">
+            <span className="settings-toggle-label">启动时自动扫描数据</span>
+            <button
+              type="button"
+              className={`settings-toggle${autoScan ? " is-on" : ""}`}
+              role="switch"
+              aria-checked={autoScan}
+              onClick={() => {
+                const next = !autoScan;
+                setAutoScan(next);
+                localStorage.setItem("omnitrace-auto-scan", next ? "true" : "false");
+              }}
+            />
+          </div>
         </div>
       </div>
     </section>

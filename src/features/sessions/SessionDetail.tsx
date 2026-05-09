@@ -221,7 +221,7 @@ function ToolActionBlock({
           <div className={clsx("msg-source-icon", sourceMeta.iconClass)} aria-hidden="true">
             <img src={sourceMeta.iconSrc} alt="" width="10" height="10" />
           </div>
-          <span className="msg-source-label">{modelId ?? sourceMeta.label} · 执行动作</span>
+          <span className="msg-source-label">{modelId || sourceMeta.label} · 执行动作</span>
           <MessageTime value={tools[0].createdAt} />
         </div>
         <MessageToolAttachment tools={tools} />
@@ -288,15 +288,16 @@ function AssistantMessage({
           <div className={clsx("msg-source-icon", sourceMeta.iconClass)} aria-hidden="true">
             <img src={sourceMeta.iconSrc} alt="" width="10" height="10" />
           </div>
-          <span className="msg-source-label">{modelId ?? sourceMeta.label}</span>
+          <span className="msg-source-label">{modelId || sourceMeta.label}</span>
           {toolCount > 0 && (
             <button
               type="button"
               className="msg-tool-count-badge"
+              aria-label={`工具调用 ${toolCount}`}
               onClick={() => setToolsOpen((v) => !v)}
             >
               <Chevron open={toolsOpen} />
-              {toolCount} 个工具
+              工具调用 {toolCount}
             </button>
           )}
           <MessageTime value={msg.createdAt} />

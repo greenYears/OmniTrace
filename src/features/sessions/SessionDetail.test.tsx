@@ -197,7 +197,7 @@ describe("SessionDetail", () => {
     const userCard = screen.getByText("还是加一个判断吧").closest(".msg-user-card");
     expect(userCard).toBeInTheDocument();
     expect(userCard).not.toHaveTextContent("工具调用 2");
-    expect(screen.getByText("Claude 执行动作")).toBeInTheDocument();
+    expect(screen.getByText(/Claude · 执行动作/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "工具调用 2" })).toBeInTheDocument();
     expect(screen.queryByText("Edit")).not.toBeInTheDocument();
   });
