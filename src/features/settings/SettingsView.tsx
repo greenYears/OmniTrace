@@ -3,11 +3,14 @@ import { listen } from "@tauri-apps/api/event";
 
 import { getScanStats, scanAllData } from "../../lib/tauri";
 import { handleWindowDragPointerDown } from "../../lib/windowDrag";
+import { ScanCard } from "../scanning/ScanCard";
 import type {
+  ScanAllResult,
   ScanStats,
   SessionScanProgress,
   TokenProbeProgress,
 } from "../../types/session";
+import type { ScanCardPhase } from "../scanning/ScanCard";
 
 function formatScanTime(iso: string | null): string {
   if (!iso) {
@@ -22,20 +25,6 @@ function formatScanTime(iso: string | null): string {
   });
 }
 
-function compactPath(path: string): string {
-  return path.replace(/^\/Users\/[^/]+/, "~").replace(/^\/home\/[^/]+/, "~");
-}
-
-function ActivityDots() {
-  return (
-    <span className="scan-progress-dots" aria-hidden="true">
-      <span />
-      <span />
-      <span />
-    </span>
-  );
-}
-
 type SettingsViewProps = {
   onScanComplete?: () => void | Promise<void>;
 };
@@ -45,6 +34,8 @@ export function SettingsView({ onScanComplete }: SettingsViewProps) {
   const [scanning, setScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState<SessionScanProgress | null>(null);
   const [tokenProgress, setTokenProgress] = useState<TokenProbeProgress | null>(null);
+  const [scanPhase, setScanPhase] = useState<ScanCardPhase>("scanning");
+  const [scanResult, setScanResult] = useState<ScanAllResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [autoScan, setAutoScan] = useState(() => localStorage.getItem("omnitrace-auto-scan") !== "false");
@@ -66,6 +57,7 @@ export function SettingsView({ onScanComplete }: SettingsViewProps) {
 
     void listen<TokenProbeProgress>("token-probe-progress", (event) => {
       setTokenProgress(event.payload);
+      if (!cancelled) setScanPhase("probing");
     }).then((unlisten) => {
       if (cancelled) {
         unlisten();
@@ -91,11 +83,15 @@ export function SettingsView({ onScanComplete }: SettingsViewProps) {
     setScanning(true);
     setScanProgress(null);
     setTokenProgress(null);
+    setScanPhase("scanning");
+    setScanResult(null);
     setError(null);
     setSuccess(null);
 
     try {
       const result = await scanAllData();
+      setScanResult(result);
+      setScanPhase("done");
       setStats({
         sessionCount: result.sessionCount,
         messageCount: result.messageCount,
@@ -111,8 +107,16 @@ export function SettingsView({ onScanComplete }: SettingsViewProps) {
       const message = err instanceof Error ? err.message : String(err);
       setError(`扫描失败：${message}`);
     } finally {
-      setScanning(false);
+      setTimeout(() => setScanning(false), 800);
     }
+  }
+
+  function handleCancelScan() {
+    setScanning(false);
+    setScanProgress(null);
+    setTokenProgress(null);
+    setScanPhase("scanning");
+    setScanResult(null);
   }
 
   return (
@@ -156,35 +160,7 @@ export function SettingsView({ onScanComplete }: SettingsViewProps) {
           </button>
 
           {error ? <p className="settings-error">{error}</p> : null}
-          {success ? <p className="settings-success" role="status">{success}</p> : null}
-
-          {scanning && scanProgress ? (
-            <div className="settings-progress" role="status">
-              <div className="settings-progress-main">
-                <ActivityDots />
-                <strong>{scanProgress.sourceId === "claude_code" ? "Claude Code" : "Codex"}</strong>
-                <span>{scanProgress.phase}</span>
-              </div>
-              <div className="settings-progress-path">{compactPath(scanProgress.path)}</div>
-              <div className="settings-progress-meta">
-                {scanProgress.filesScanned} 个文件 · {scanProgress.sessionsFound} 个会话
-              </div>
-            </div>
-          ) : null}
-
-          {scanning && tokenProgress && !scanProgress ? (
-            <div className="settings-progress" role="status">
-              <div className="settings-progress-main">
-                <ActivityDots />
-                <strong>Token 探测</strong>
-                <span>{tokenProgress.phase}</span>
-              </div>
-              <div className="settings-progress-path">{compactPath(tokenProgress.path)}</div>
-              <div className="settings-progress-meta">
-                {tokenProgress.filesScanned} 个文件 · {tokenProgress.recordsWithUsage} 条 usage
-              </div>
-            </div>
-          ) : null}
+          {success && !scanning ? <p className="settings-success" role="status">{success}</p> : null}
         </div>
 
         <div className="settings-section">
@@ -205,6 +181,18 @@ export function SettingsView({ onScanComplete }: SettingsViewProps) {
           </div>
         </div>
       </div>
+
+      {scanning && (
+        <div className={`settings-scan-overlay${scanPhase === "done" ? " is-done" : ""}`}>
+          <ScanCard
+            phase={scanPhase}
+            scanProgress={scanProgress}
+            tokenProgress={tokenProgress}
+            result={scanResult}
+            onCancel={handleCancelScan}
+          />
+        </div>
+      )}
     </section>
   );
 }

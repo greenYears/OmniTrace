@@ -61,6 +61,31 @@ function MessageTime({ value }: { value: string }) {
   );
 }
 
+function formatElapsed(ms: number): string {
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  const seconds = Math.floor(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainSeconds = seconds % 60;
+  if (minutes < 60) return `${minutes}m ${remainSeconds}s`;
+  const hours = Math.floor(minutes / 60);
+  const remainMinutes = minutes % 60;
+  return `${hours}h ${remainMinutes}m`;
+}
+
+function MessageElapsed({ from, to }: { from: string; to: string }) {
+  const fromMs = new Date(from).getTime();
+  const toMs = new Date(to).getTime();
+  if (Number.isNaN(fromMs) || Number.isNaN(toMs) || fromMs >= toMs) {
+    return null;
+  }
+  return (
+    <span className="msg-elapsed" title={`耗时 ${formatElapsed(toMs - fromMs)}`}>
+      {formatElapsed(toMs - fromMs)}
+    </span>
+  );
+}
+
 function Chevron({ open }: { open: boolean }) {
   return (
     <svg
@@ -268,6 +293,7 @@ function AssistantMessage({
   sourceMeta,
   modelId,
   isLatest,
+  prevCreatedAt,
   className,
 }: {
   msg: SessionMessage;
@@ -275,6 +301,7 @@ function AssistantMessage({
   sourceMeta: SourceMeta;
   modelId?: string;
   isLatest?: boolean;
+  prevCreatedAt?: string;
   className?: string;
 }) {
   const text = msg.contentText.trim();
@@ -300,6 +327,7 @@ function AssistantMessage({
               工具调用 {toolCount}
             </button>
           )}
+          {prevCreatedAt && <MessageElapsed from={prevCreatedAt} to={msg.createdAt} />}
           <MessageTime value={msg.createdAt} />
           {isLatest && <span className="msg-latest-badge">最新</span>}
         </div>
@@ -615,8 +643,17 @@ export function SessionDetail({ detail, isLoading = false, pendingSession = null
     switch (msg.role) {
       case "user":
         return <UserMessage key={msg.id} {...messageProps} />;
-      case "assistant":
-        return <AssistantMessage key={msg.id} {...messageProps} sourceMeta={sourceMeta!} modelId={contentDetail?.modelId} />;
+      case "assistant": {
+        let prevCreatedAt: string | undefined;
+        for (let i = index - 1; i >= 0; i -= 1) {
+          const prev = visibleItems[i];
+          if (prev?.kind === "message") {
+            prevCreatedAt = prev.msg.createdAt;
+            break;
+          }
+        }
+        return <AssistantMessage key={msg.id} {...messageProps} sourceMeta={sourceMeta!} modelId={contentDetail?.modelId} prevCreatedAt={prevCreatedAt} />;
+      }
       default:
         return null;
     }

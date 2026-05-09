@@ -324,6 +324,34 @@ function aggregateModelBuckets(buckets: TokenUsageBucket[]) {
   return [...models.values()].sort((a, b) => b.totalTokens - a.totalTokens);
 }
 
+type DateGroup = {
+  date: string;
+  rows: TokenUsageBucket[];
+};
+
+function groupBucketsByDate(buckets: TokenUsageBucket[]): DateGroup[] {
+  const map = new Map<string, TokenUsageBucket[]>();
+  for (const b of buckets) {
+    let group = map.get(b.date);
+    if (!group) {
+      group = [];
+      map.set(b.date, group);
+    }
+    group.push(b);
+  }
+  const groups: DateGroup[] = [];
+  for (const [date, rows] of map) {
+    rows.sort((a, b) => b.totalTokens - a.totalTokens);
+    groups.push({ date, rows });
+  }
+  groups.sort((a, b) => b.date.localeCompare(a.date));
+  return groups;
+}
+
+function modelDisplayName(bucket: TokenUsageBucket) {
+  return bucket.modelId || "unknown";
+}
+
 function sourceLabel(sourceId: string) {
   if (sourceId === "claude_code") {
     return "Claude Code";
@@ -452,6 +480,15 @@ function TokenUsageSummary({ report, timeRange, customRange }: { report: TokenUs
   const activeHourlyBucket = activeHourlyIndex === null ? null : chartBuckets[activeHourlyIndex] ?? null;
   const activeHourlyLeft = activeHourlyIndex === null ? 0 : getTokenLinePointX(activeHourlyIndex, chartBuckets.length);
   const detailBuckets = filterVisibleTokenDetailBuckets(chartBuckets, isHourly);
+  const modelDetailBuckets = isHourly
+    ? filterTokenBuckets(
+        report.byModelByHour.filter((b) => b.date.startsWith(`${hourlyDay} `)),
+        sourceFilter,
+        modelFilter,
+      ).filter((b) => b.totalTokens > 0)
+    : filteredModelDayBuckets;
+  const detailDateGroups = groupBucketsByDate(modelDetailBuckets);
+  const hasModelDetail = detailDateGroups.length > 0;
   const summaryCards = [
     { label: "总量", value: totals.totalTokens, accent: "total" },
     { label: "输入", value: totals.inputTokens, accent: "input" },
@@ -632,9 +669,44 @@ function TokenUsageSummary({ report, timeRange, customRange }: { report: TokenUs
       <div className="token-probe-grid">
         <div className="token-probe-card">
           <h3>{isHourly ? "按小时明细" : "按天明细"}</h3>
-          {detailBuckets.length > 0 ? (
+          {hasModelDetail ? (
             <div className="token-day-table">
               <div className="token-day-table-head">
+                <span>{isHourly ? "时间" : "日期"}</span>
+                <span>模型</span>
+                <span>总量</span>
+                <span>输入量</span>
+                <span>输出量</span>
+                <span>缓存量</span>
+                <span>思考量</span>
+              </div>
+              {detailDateGroups.map((group) =>
+                group.rows.map((row, rowIndex) => (
+                  <div
+                    key={`${row.date}-${row.sourceId}-${row.modelId}`}
+                    className={`token-day-table-row${rowIndex > 0 ? " is-sub-row" : ""}`}
+                    title={formatTokenTooltip(row)}
+                  >
+                    {rowIndex === 0 ? (
+                      <span className="token-day-date-cell">
+                        {isHourly ? row.date.slice(11) : row.date}
+                      </span>
+                    ) : (
+                      <span className="token-day-date-spacer" />
+                    )}
+                    <span className="token-day-model-cell">{modelDisplayName(row)}</span>
+                    <strong>{formatTokenCount(row.totalTokens)}</strong>
+                    <span>{formatTokenNumber(row.inputTokens)}</span>
+                    <span>{formatTokenNumber(row.outputTokens)}</span>
+                    <span>{formatTokenNumber(row.cacheTokens)}</span>
+                    <span>{formatTokenNumber(row.reasoningTokens)}</span>
+                  </div>
+                )),
+              )}
+            </div>
+          ) : detailBuckets.length > 0 ? (
+            <div className="token-day-table">
+              <div className="token-day-table-head token-day-table-row--simple">
                 <span>{isHourly ? "时间" : "日期"}</span>
                 <span>总量</span>
                 <span>输入量</span>
@@ -643,7 +715,7 @@ function TokenUsageSummary({ report, timeRange, customRange }: { report: TokenUs
                 <span>思考量</span>
               </div>
               {detailBuckets.slice().reverse().map((bucket) => (
-                <div key={bucket.date} className="token-day-table-row" title={formatTokenTooltip(bucket)}>
+                <div key={bucket.date} className="token-day-table-row token-day-table-row--simple" title={formatTokenTooltip(bucket)}>
                   <span>{bucket.date}</span>
                   <strong>{formatTokenCount(bucket.totalTokens)}</strong>
                   <span>{formatTokenNumber(bucket.inputTokens)}</span>
