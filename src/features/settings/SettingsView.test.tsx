@@ -56,7 +56,7 @@ describe("SettingsView", () => {
       expect(screen.queryByText("从未扫描")).not.toBeInTheDocument();
     });
     expect(screen.getByText(/05\/07.*10:30/)).toBeInTheDocument();
-    expect(screen.getByText("148 个")).toBeInTheDocument();
-    expect(screen.getByText("16130 条")).toBeInTheDocument();
+    expect(screen.getByText("148")).toBeInTheDocument();
+    expect(screen.getByText("16130")).toBeInTheDocument();
   });
 });

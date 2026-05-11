@@ -3,6 +3,7 @@ pub mod commands;
 pub mod db;
 pub mod domain;
 pub mod ingest;
+pub mod knowledge;
 
 use tauri::Manager;
 
@@ -43,7 +44,16 @@ pub fn run() {
             commands::get_session_detail,
             commands::get_token_report,
             commands::get_scan_stats,
-            commands::delete_session
+            commands::delete_session,
+            knowledge::commands::list_llm_providers,
+            knowledge::commands::save_llm_provider,
+            knowledge::commands::delete_llm_provider,
+            knowledge::commands::list_knowledge_runs,
+            knowledge::commands::list_knowledge_documents,
+            knowledge::commands::update_knowledge_document,
+            knowledge::commands::get_export_settings,
+            knowledge::commands::save_export_settings,
+            knowledge::commands::start_knowledge_run,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

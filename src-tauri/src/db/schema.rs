@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use rusqlite::{Connection, OptionalExtension};
 
-pub const CURRENT_SCHEMA_VERSION: &str = "1";
+pub const CURRENT_SCHEMA_VERSION: &str = "2";
 
 pub fn schema_sql() -> &'static str {
     r#"
@@ -69,6 +69,8 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
     conn.execute_batch(schema_sql())
         .with_context(|| "execute schema_sql batch")?;
     upgrade_ingest_records_table(conn)?;
+    crate::knowledge::schema::run_knowledge_migrations(conn)
+        .with_context(|| "execute knowledge schema migrations")?;
 
     let current: Option<String> = conn
         .query_row(

@@ -1,6 +1,6 @@
 import { handleWindowDragPointerDown } from "../../lib/windowDrag";
 
-type AppView = "sessions" | "tokenUsage" | "settings";
+type AppView = "sessions" | "tokenUsage" | "knowledge" | "settings";
 
 type AppSidebarProps = {
   activeView: AppView;
@@ -21,6 +21,15 @@ function BarChartIcon() {
       <path d="M18 20V10" />
       <path d="M12 20V4" />
       <path d="M6 20v-6" />
+    </svg>
+  );
+}
+
+function BookIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
     </svg>
   );
 }
@@ -60,6 +69,16 @@ export function AppSidebar({ activeView, onViewChange }: AppSidebarProps) {
         >
           <BarChartIcon />
           <span className="app-sidebar-label">Token</span>
+        </button>
+        <button
+          className={`app-sidebar-item${activeView === "knowledge" ? " is-active" : ""}`}
+          type="button"
+          onClick={() => onViewChange("knowledge")}
+          aria-label="知识"
+          title="知识"
+        >
+          <BookIcon />
+          <span className="app-sidebar-label">知识</span>
         </button>
       </div>
       <div className="app-sidebar-bottom">

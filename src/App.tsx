@@ -2,6 +2,7 @@ import "./styles.css";
 import { startTransition, useEffect, useRef, useState } from "react";
 
 import { SettingsView } from "./features/settings/SettingsView";
+import { KnowledgeView } from "./features/knowledge/KnowledgeView";
 import { StartupScanView } from "./features/scanning/StartupScanView";
 import { ThreePaneShell } from "./features/layout/ThreePaneShell";
 import { AppSidebar } from "./features/sidebar/AppSidebar";
@@ -17,7 +18,7 @@ import type {
   TokenUsageProbeReport,
 } from "./types/session";
 
-type AppView = "sessions" | "tokenUsage" | "settings";
+type AppView = "sessions" | "tokenUsage" | "knowledge" | "settings";
 type TokenUsageSourceFilter = "all" | "claude_code" | "codex";
 type TokenLinePoint = {
   x: number;
@@ -944,6 +945,8 @@ function App() {
         <div className="viewer-shell">
           {activeView === "settings" ? (
             <SettingsView onScanComplete={handleScanComplete} />
+          ) : activeView === "knowledge" ? (
+            <KnowledgeView onNavigateSettings={() => setActiveView("settings")} />
           ) : activeView === "tokenUsage" ? (
             <TokenUsageView
               report={tokenReport}

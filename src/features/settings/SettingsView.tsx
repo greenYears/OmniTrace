@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getScanStats, scanAllData } from "../../lib/tauri";
 import { handleWindowDragPointerDown } from "../../lib/windowDrag";
 import { ScanCard } from "../scanning/ScanCard";
+import { ProviderSection } from "../knowledge/ProviderSettings";
 import type {
   ScanAllResult,
   ScanStats,
@@ -128,59 +129,73 @@ export function SettingsView({ onScanComplete }: SettingsViewProps) {
       </header>
 
       <div className="settings-content">
-        <div className="settings-section">
-          <h3>数据管理</h3>
+        <div className="settings-layout">
+          <div className="settings-card">
+              <div className="settings-card-header">
+                <h3 className="settings-card-title">数据管理</h3>
+              </div>
+              <div className="settings-card-body">
+                {stats ? (
+                  <div className="settings-stat-grid">
+                    <div className="settings-stat-cell">
+                      <span className="settings-stat-value">{stats.sessionCount}</span>
+                      <span className="settings-stat-label">会话</span>
+                    </div>
+                    <div className="settings-stat-cell">
+                      <span className="settings-stat-value">{stats.messageCount}</span>
+                      <span className="settings-stat-label">消息</span>
+                    </div>
+                    <div className="settings-stat-cell settings-stat-cell--wide">
+                      <span className="settings-stat-label">上次扫描</span>
+                      <span className="settings-stat-time">{formatScanTime(stats.lastScannedAt)}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="settings-empty">暂无数据</p>
+                )}
 
-          {stats ? (
-            <div className="settings-stats">
-              <div className="settings-stat-row">
-                <span>会话</span>
-                <strong>{stats.sessionCount} 个</strong>
-              </div>
-              <div className="settings-stat-row">
-                <span>消息</span>
-                <strong>{stats.messageCount} 条</strong>
-              </div>
-              <div className="settings-stat-row">
-                <span>上次扫描</span>
-                <span>{formatScanTime(stats.lastScannedAt)}</span>
+                <button
+                  className="settings-action-btn"
+                  type="button"
+                  onClick={() => void handleScan()}
+                  disabled={scanning}
+                >
+                  {scanning ? "扫描中..." : "扫描全部数据"}
+                </button>
+
+                {error ? <p className="settings-error">{error}</p> : null}
+                {success && !scanning ? <p className="settings-success" role="status">{success}</p> : null}
               </div>
             </div>
-          ) : (
-            <p className="settings-empty">暂无数据</p>
-          )}
 
-          <button
-            className="settings-scan-button"
-            type="button"
-            onClick={() => void handleScan()}
-            disabled={scanning}
-          >
-            {scanning ? "扫描中..." : "扫描全部数据"}
-          </button>
+            <div className="settings-card">
+              <div className="settings-card-header">
+                <h3 className="settings-card-title">启动设置</h3>
+              </div>
+              <div className="settings-card-body">
+                <div className="settings-toggle-row">
+                  <div className="settings-toggle-text">
+                    <span className="settings-toggle-label">启动时自动扫描数据</span>
+                    <span className="settings-toggle-desc">应用启动时自动扫描所有数据源</span>
+                  </div>
+                  <button
+                    type="button"
+                    className={`settings-toggle${autoScan ? " is-on" : ""}`}
+                    role="switch"
+                    aria-checked={autoScan}
+                    onClick={() => {
+                      const next = !autoScan;
+                      setAutoScan(next);
+                      localStorage.setItem("omnitrace-auto-scan", next ? "true" : "false");
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
 
-          {error ? <p className="settings-error">{error}</p> : null}
-          {success && !scanning ? <p className="settings-success" role="status">{success}</p> : null}
-        </div>
-
-        <div className="settings-section">
-          <h3>启动设置</h3>
-          <div className="settings-toggle-row">
-            <span className="settings-toggle-label">启动时自动扫描数据</span>
-            <button
-              type="button"
-              className={`settings-toggle${autoScan ? " is-on" : ""}`}
-              role="switch"
-              aria-checked={autoScan}
-              onClick={() => {
-                const next = !autoScan;
-                setAutoScan(next);
-                localStorage.setItem("omnitrace-auto-scan", next ? "true" : "false");
-              }}
-            />
+            <ProviderSection />
           </div>
         </div>
-      </div>
 
       {scanning && (
         <div className={`settings-scan-overlay${scanPhase === "done" ? " is-done" : ""}`}>
